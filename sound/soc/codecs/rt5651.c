@@ -880,9 +880,6 @@ static const struct snd_soc_dapm_widget rt5651_dapm_widgets[] = {
 
 	SND_SOC_DAPM_SUPPLY("PLL1", RT5651_PWR_ANLG2,
 			RT5651_PWR_PLL_BIT, 0, NULL, 0),
-	/* Input Side */
-	SND_SOC_DAPM_SUPPLY("JD Power", RT5651_PWR_ANLG2,
-		RT5651_PWM_JD_M_BIT, 0, NULL, 0),
 
 	/* micbias */
 	SND_SOC_DAPM_SUPPLY("LDO", RT5651_PWR_ANLG1,
@@ -1535,8 +1532,8 @@ static int rt5651_set_bias_level(struct snd_soc_codec *codec,
 	struct rt5651_priv *rt5651 = snd_soc_codec_get_drvdata(codec);
 
 	switch (level) {
-	case SND_SOC_BIAS_PREPARE:
-		if (SND_SOC_BIAS_STANDBY == snd_soc_codec_get_bias_level(codec)) {
+	case SND_SOC_BIAS_STANDBY:
+		if (SND_SOC_BIAS_OFF == snd_soc_codec_get_bias_level(codec)) {
 			snd_soc_update_bits(codec, RT5651_PWR_ANLG1,
 				RT5651_PWR_VREF1 | RT5651_PWR_MB |
 				RT5651_PWR_BG | RT5651_PWR_VREF2,
@@ -1556,7 +1553,7 @@ static int rt5651_set_bias_level(struct snd_soc_codec *codec,
 		}
 		break;
 
-	case SND_SOC_BIAS_STANDBY:
+	case SND_SOC_BIAS_OFF:
 		snd_soc_write(codec, RT5651_D_MISC, 0x0010);
 		snd_soc_write(codec, RT5651_PWR_DIG1, 0x0000);
 		snd_soc_write(codec, RT5651_PWR_DIG2, 0x0000);
@@ -1591,7 +1588,6 @@ static irqreturn_t rt5651_irq(int irq, void *data)
 static int rt5651_set_jack(struct snd_soc_codec *codec,
 			   struct snd_soc_jack *hp_jack, void *data)
 {
-	struct snd_soc_dapm_context *dapm = snd_soc_codec_get_dapm(codec);
 	struct rt5651_priv *rt5651 = snd_soc_codec_get_drvdata(codec);
 	int ret;
 
@@ -1634,9 +1630,8 @@ static int rt5651_set_jack(struct snd_soc_codec *codec,
 		break;
 	}
 
-	snd_soc_dapm_force_enable_pin(dapm, "JD Power");
-	snd_soc_dapm_force_enable_pin(dapm, "LDO");
-	snd_soc_dapm_sync(dapm);
+	regmap_update_bits(rt5651->regmap, RT5651_PWR_ANLG2, RT5651_PWR_JD_M,
+			   RT5651_PWR_JD_M);
 
 	regmap_update_bits(rt5651->regmap, RT5651_MICBIAS,
 			   0x38, 0x38);
@@ -1825,8 +1820,11 @@ static int rt5651_jack_detect(struct snd_soc_codec *codec, int jack_insert)
 	int jack_type;
 
 	if (jack_insert) {
-		snd_soc_dapm_force_enable_pin(dapm, "LDO");
-		snd_soc_dapm_sync(dapm);
+		snd_soc_dapm_mutex_lock(dapm);
+		snd_soc_dapm_force_enable_pin_unlocked(dapm, "LDO");
+		snd_soc_dapm_force_enable_pin_unlocked(dapm, "micbias1");
+		snd_soc_dapm_sync_unlocked(dapm);
+		snd_soc_dapm_mutex_unlock(dapm);
 
 		snd_soc_update_bits(codec, RT5651_MICBIAS,
 				    RT5651_MIC1_OVCD_MASK |
@@ -1844,6 +1842,12 @@ static int rt5651_jack_detect(struct snd_soc_codec *codec, int jack_insert)
 			jack_type = SND_JACK_HEADSET;
 		snd_soc_update_bits(codec, RT5651_IRQ_CTRL2,
 				    RT5651_MB1_OC_CLR, 0);
+
+		snd_soc_dapm_mutex_lock(dapm);
+		snd_soc_dapm_disable_pin_unlocked(dapm, "micbias1");
+		snd_soc_dapm_disable_pin_unlocked(dapm, "LDO");
+		snd_soc_dapm_sync_unlocked(dapm);
+		snd_soc_dapm_mutex_unlock(dapm);
 	} else { /* jack out */
 		jack_type = 0;
 
