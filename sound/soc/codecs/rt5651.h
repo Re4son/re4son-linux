@@ -138,6 +138,7 @@
 /* Index of Codec Private Register definition */
 #define RT5651_BIAS_CUR1			0x12
 #define RT5651_BIAS_CUR3			0x14
+#define RT5651_BIAS_CUR4			0x15
 #define RT5651_CLSD_INT_REG1			0x1c
 #define RT5651_CHPUMP_INT_REG1			0x24
 #define RT5651_MAMP_INT_REG2			0x37
@@ -1597,8 +1598,8 @@
 #define RT5651_MB1_OC_P_NOR			(0x0 << 7)
 #define RT5651_MB1_OC_P_INV			(0x1 << 7)
 #define RT5651_MB2_OC_P_MASK			(0x1 << 6)
-#define RT5651_MB1_OC_CLR			(0x1 << 3)
-#define RT5651_MB1_OC_CLR_SFT			3
+#define RT5651_MB1_OC_STATUS			(0x1 << 3)
+#define RT5651_MB1_OC_STATUS_SFT		3
 #define RT5651_STA_GPIO8			(0x1)
 #define RT5651_STA_GPIO8_BIT			0
 
@@ -1966,6 +1967,15 @@
 #define RT5651_D_GATE_EN_SFT			0
 
 /* Codec Private Register definition */
+
+/* MIC Over current threshold scale factor (0x15) */
+#define RT5651_MIC_OVCD_SF_MASK			(0x3 << 8)
+#define RT5651_MIC_OVCD_SF_SFT			8
+#define RT5651_MIC_OVCD_SF_0P5			(0x0 << 8)
+#define RT5651_MIC_OVCD_SF_0P75			(0x1 << 8)
+#define RT5651_MIC_OVCD_SF_1P0			(0x2 << 8)
+#define RT5651_MIC_OVCD_SF_1P5			(0x3 << 8)
+
 /* 3D Speaker Control (0x63) */
 #define RT5651_3D_SPK_MASK			(0x1 << 15)
 #define RT5651_3D_SPK_SFT			15
@@ -2063,7 +2073,7 @@ struct rt5651_priv {
 	struct rt5651_platform_data pdata;
 	struct regmap *regmap;
 	struct snd_soc_jack *hp_jack;
-	struct delayed_work jack_detect_work;
+	struct work_struct jack_detect_work;
 
 	int irq;
 	int sysclk;

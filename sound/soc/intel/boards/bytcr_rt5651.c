@@ -369,6 +369,7 @@ static int byt_rt5651_init(struct snd_soc_pcm_runtime *runtime)
 	if (byt_rt5651_quirk & BYT_RT5651_DMIC_EN)
 		pdata.dmic_en = true;
 	pdata.jd_src = BYT_RT5651_JDSRC(byt_rt5651_quirk);
+	pdata.clk = "Platform Clock";
 	rt5651_set_pdata(codec, &pdata);
 
 	if (BYT_RT5651_JDSRC(byt_rt5651_quirk)) {
