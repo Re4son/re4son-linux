@@ -47,7 +47,7 @@ struct typec_switch *typec_switch_get(struct device *dev)
 	mutex_lock(&switch_lock);
 	sw = __device_find_connection(dev, "typec-switch", NULL,
 				      typec_switch_match);
-	if (sw)
+	if (!IS_ERR_OR_NULL(sw))
 		get_device(sw->dev);
 	mutex_unlock(&switch_lock);
 
@@ -133,7 +133,7 @@ struct typec_mux *typec_mux_get(struct device *dev)
 
 	mutex_lock(&mux_lock);
 	mux = __device_find_connection(dev, "typec-mux", NULL, typec_mux_match);
-	if (!IS_ERR(mux))
+	if (!IS_ERR_OR_NULL(mux))
 		get_device(mux->dev);
 	mutex_unlock(&mux_lock);
 

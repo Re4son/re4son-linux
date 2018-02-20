@@ -12,35 +12,6 @@
 #include <linux/vfs.h>
 #include "vfsmod.h"
 
-/*
- * vboxsf_reg_aops and sf_backing_dev_info are just quick implementations to
- * make sendfile work. For more information have a look at
- *
- *   http://us1.samba.org/samba/ftp/cifs-cvs/ols2006-fs-tutorial-smf.odp
- *
- * and the sample implementation
- *
- *   http://pserver.samba.org/samba/ftp/cifs-cvs/samplefs.tar.gz
- */
-
-static void sf_timespec_from_vbox(struct timespec *tv,
-				  const struct shfl_timespec *ts)
-{
-	s64 nsec, t = ts->ns_relative_to_unix_epoch;
-
-	nsec = do_div(t, 1000000000);
-	tv->tv_sec = t;
-	tv->tv_nsec = nsec;
-}
-
-static void sf_timespec_to_vbox(struct shfl_timespec *ts,
-				const struct timespec *tv)
-{
-	s64 t = (s64) tv->tv_nsec + (s64) tv->tv_sec * 1000000000;
-
-	ts->ns_relative_to_unix_epoch = t;
-}
-
 /* set [inode] attributes based on [info], uid/gid based on [sf_g] */
 void vboxsf_init_inode(struct sf_glob_info *sf_g, struct inode *inode,
 		       const struct shfl_fsobjinfo *info)
@@ -70,6 +41,8 @@ void vboxsf_init_inode(struct sf_glob_info *sf_g, struct inode *inode,
 
 #undef mode_set
 
+	/* We use the host-side values for these */
+	inode->i_flags |= S_NOATIME | S_NOCMTIME;
 	inode->i_mapping->a_ops = &vboxsf_reg_aops;
 
 	if (SHFL_IS_DIRECTORY(attr->mode)) {
@@ -108,9 +81,12 @@ void vboxsf_init_inode(struct sf_glob_info *sf_g, struct inode *inode,
 	do_div(allocated, 512);
 	inode->i_blocks = allocated;
 
-	sf_timespec_from_vbox(&inode->i_atime, &info->access_time);
-	sf_timespec_from_vbox(&inode->i_ctime, &info->change_time);
-	sf_timespec_from_vbox(&inode->i_mtime, &info->modification_time);
+	inode->i_atime = ns_to_timespec(
+				 info->access_time.ns_relative_to_unix_epoch);
+	inode->i_ctime = ns_to_timespec(
+				 info->change_time.ns_relative_to_unix_epoch);
+	inode->i_mtime = ns_to_timespec(
+			   info->modification_time.ns_relative_to_unix_epoch);
 }
 
 int vboxsf_create_at_dentry(struct dentry *dentry,
@@ -172,12 +148,16 @@ int vboxsf_inode_revalidate(struct dentry *dentry)
 	struct sf_glob_info *sf_g = GET_GLOB_INFO(dentry->d_sb);
 	struct sf_inode_info *sf_i;
 	struct shfl_fsobjinfo info;
+	struct timespec prev_mtime;
+	struct inode *inode;
 	int err;
 
 	if (!dentry || !d_really_is_positive(dentry))
 		return -EINVAL;
 
-	sf_i = GET_INODE_INFO(d_inode(dentry));
+	inode = d_inode(dentry);
+	prev_mtime = inode->i_mtime;
+	sf_i = GET_INODE_INFO(inode);
 	if (!sf_i->force_restat) {
 		if (time_before(jiffies, dentry->d_time + sf_g->ttl))
 			return 0;
@@ -189,7 +169,16 @@ int vboxsf_inode_revalidate(struct dentry *dentry)
 
 	dentry->d_time = jiffies;
 	sf_i->force_restat = 0;
-	vboxsf_init_inode(sf_g, d_inode(dentry), &info);
+	vboxsf_init_inode(sf_g, inode, &info);
+
+	/*
+	 * mmap()-ed files use the page-cache, if the file was changed on the
+	 * host side we need to invalidate the page-cache for it.  Note this
+	 * also gets triggered by our own writes, this is unavoidable.
+	 */
+	if (timespec_compare(&inode->i_mtime, &prev_mtime) > 0)
+		invalidate_mapping_pages(inode->i_mapping, 0, -1);
+
 	return 0;
 }
 
@@ -256,12 +245,12 @@ int vboxsf_setattr(struct dentry *dentry, struct iattr *iattr)
 		}
 
 		if (iattr->ia_valid & ATTR_ATIME)
-			sf_timespec_to_vbox(&info.access_time,
-					    &iattr->ia_atime);
+			info.access_time.ns_relative_to_unix_epoch =
+					    timespec_to_ns(&iattr->ia_atime);
 
 		if (iattr->ia_valid & ATTR_MTIME)
-			sf_timespec_to_vbox(&info.modification_time,
-					    &iattr->ia_mtime);
+			info.modification_time.ns_relative_to_unix_epoch =
+					    timespec_to_ns(&iattr->ia_mtime);
 
 		/*
 		 * Ignore ctime (inode change time) as it can't be set

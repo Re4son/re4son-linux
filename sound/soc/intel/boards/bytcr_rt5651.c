@@ -37,11 +37,12 @@
 
 enum {
 	/* Bits 0-3 are reserved for JD_SRC values */
-	BYT_RT5651_DMIC_MAP	= (0 << 4),
-	BYT_RT5651_IN1_MAP	= (1 << 4),
-	BYT_RT5651_IN2_MAP	= (2 << 4),
-	BYT_RT5651_IN1_IN2_MAP	= (3 << 4),
-	BYT_RT5651_IN3_MAP	= (4 << 4),
+	BYT_RT5651_DMIC_MAP		= (0 << 4),
+	BYT_RT5651_IN1_MAP		= (1 << 4),
+	BYT_RT5651_IN2_MAP		= (2 << 4),
+	BYT_RT5651_IN1_IN2_MAP		= (3 << 4),
+	BYT_RT5651_IN1_HS_IN3_MAP	= (4 << 4),
+	BYT_RT5651_IN2_HS_IN3_MAP	= (5 << 4),
 };
 
 #define BYT_RT5651_JDSRC(quirk)	((quirk) & GENMASK(3, 0)) /* RT5651_JD* value */
@@ -71,8 +72,10 @@ static void log_quirks(struct device *dev)
 		dev_info(dev, "quirk IN1_MAP enabled");
 	if (BYT_RT5651_MAP(byt_rt5651_quirk) == BYT_RT5651_IN2_MAP)
 		dev_info(dev, "quirk IN2_MAP enabled");
-	if (BYT_RT5651_MAP(byt_rt5651_quirk) == BYT_RT5651_IN3_MAP)
-		dev_info(dev, "quirk IN3_MAP enabled");
+	if (BYT_RT5651_MAP(byt_rt5651_quirk) == BYT_RT5651_IN1_HS_IN3_MAP)
+		dev_info(dev, "quirk IN1_HS_IN3_MAP enabled");
+	if (BYT_RT5651_MAP(byt_rt5651_quirk) == BYT_RT5651_IN2_HS_IN3_MAP)
+		dev_info(dev, "quirk IN2_HS_IN3_MAP enabled");
 	if (byt_rt5651_quirk & BYT_RT5651_DMIC_EN)
 		dev_info(dev, "quirk DMIC enabled");
 	if (byt_rt5651_quirk & BYT_RT5651_MCLK_EN)
@@ -224,8 +227,8 @@ static const struct snd_soc_dapm_route byt_rt5651_intmic_dmic_map[] = {
 
 static const struct snd_soc_dapm_route byt_rt5651_intmic_in1_map[] = {
 	{"Internal Mic", NULL, "micbias1"},
-	{"IN2P", NULL, "Headset Mic"},
 	{"IN1P", NULL, "Internal Mic"},
+	{"IN2P", NULL, "Headset Mic"},
 };
 
 static const struct snd_soc_dapm_route byt_rt5651_intmic_in2_map[] = {
@@ -241,10 +244,16 @@ static const struct snd_soc_dapm_route byt_rt5651_intmic_in1_in2_map[] = {
 	{"IN3P", NULL, "Headset Mic"},
 };
 
-static const struct snd_soc_dapm_route byt_rt5651_intmic_in3_map[] = {
+static const struct snd_soc_dapm_route byt_rt5651_intmic_in1_hs_in3_map[] = {
 	{"Internal Mic", NULL, "micbias1"},
-	{"IN3P", NULL, "Headset Mic"},
 	{"IN1P", NULL, "Internal Mic"},
+	{"IN3P", NULL, "Headset Mic"},
+};
+
+static const struct snd_soc_dapm_route byt_rt5651_intmic_in2_hs_in3_map[] = {
+	{"Internal Mic", NULL, "micbias1"},
+	{"IN2P", NULL, "Internal Mic"},
+	{"IN3P", NULL, "Headset Mic"},
 };
 
 static const struct snd_soc_dapm_route byt_rt5651_ssp0_aif1_map[] = {
@@ -327,7 +336,7 @@ static const struct dmi_system_id byt_rt5651_quirk_table[] = {
 			DMI_MATCH(DMI_SYS_VENDOR, "Circuitco"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "Minnowboard Max B3 PLATFORM"),
 		},
-		.driver_data = (void *)(BYT_RT5651_IN3_MAP),
+		.driver_data = (void *)(BYT_RT5651_IN1_HS_IN3_MAP),
 	},
 	{
 		.callback = byt_rt5651_quirk_cb,
@@ -336,7 +345,7 @@ static const struct dmi_system_id byt_rt5651_quirk_table[] = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "Minnowboard Turbot"),
 		},
 		.driver_data = (void *)(BYT_RT5651_MCLK_EN |
-					BYT_RT5651_IN3_MAP),
+					BYT_RT5651_IN1_HS_IN3_MAP),
 	},
 	{
 		.callback = byt_rt5651_quirk_cb,
@@ -346,6 +355,17 @@ static const struct dmi_system_id byt_rt5651_quirk_table[] = {
 		},
 		.driver_data = (void *)(BYT_RT5651_MCLK_EN |
 					BYT_RT5651_IN1_IN2_MAP |
+					RT5651_JD1_1),
+	},
+	{
+		/* Chuwi Vi8 Plus (CWI519) */
+		.callback = byt_rt5651_quirk_cb,
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Hampoo"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "D2D3_Vi8A1"),
+		},
+		.driver_data = (void *)(BYT_RT5651_IN2_HS_IN3_MAP |
+					BYT_RT5651_MCLK_EN |
 					RT5651_JD1_1),
 	},
 	{}
@@ -376,9 +396,13 @@ static int byt_rt5651_init(struct snd_soc_pcm_runtime *runtime)
 		custom_map = byt_rt5651_intmic_in1_in2_map;
 		num_routes = ARRAY_SIZE(byt_rt5651_intmic_in1_in2_map);
 		break;
-	case BYT_RT5651_IN3_MAP:
-		custom_map = byt_rt5651_intmic_in3_map;
-		num_routes = ARRAY_SIZE(byt_rt5651_intmic_in3_map);
+	case BYT_RT5651_IN1_HS_IN3_MAP:
+		custom_map = byt_rt5651_intmic_in1_hs_in3_map;
+		num_routes = ARRAY_SIZE(byt_rt5651_intmic_in1_hs_in3_map);
+		break;
+	case BYT_RT5651_IN2_HS_IN3_MAP:
+		custom_map = byt_rt5651_intmic_in2_hs_in3_map;
+		num_routes = ARRAY_SIZE(byt_rt5651_intmic_in2_hs_in3_map);
 		break;
 	default:
 		custom_map = byt_rt5651_intmic_dmic_map;
@@ -414,8 +438,6 @@ static int byt_rt5651_init(struct snd_soc_pcm_runtime *runtime)
 		dev_err(card->dev, "unable to add card controls\n");
 		return ret;
 	}
-	snd_soc_dapm_ignore_suspend(&card->dapm, "Headphone");
-	snd_soc_dapm_ignore_suspend(&card->dapm, "Speaker");
 
 	if (byt_rt5651_quirk & BYT_RT5651_MCLK_EN) {
 		/*
@@ -441,9 +463,10 @@ static int byt_rt5651_init(struct snd_soc_pcm_runtime *runtime)
 			dev_err(card->dev, "unable to set MCLK rate\n");
 	}
 
-	pdata.jd_src = BYT_RT5651_JDSRC(byt_rt5651_quirk);
 	if (byt_rt5651_quirk & BYT_RT5651_DMIC_EN)
 		pdata.dmic_en = true;
+	pdata.jd_src = BYT_RT5651_JDSRC(byt_rt5651_quirk);
+	pdata.clk = "Platform Clock";
 	rt5651_set_pdata(codec, &pdata);
 
 	if (BYT_RT5651_JDSRC(byt_rt5651_quirk)) {
@@ -583,7 +606,6 @@ static struct snd_soc_dai_link byt_rt5651_dais[] = {
 		.dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF
 						| SND_SOC_DAIFMT_CBS_CFS,
 		.be_hw_params_fixup = byt_rt5651_codec_fixup,
-		.ignore_suspend = 1,
 		.nonatomic = true,
 		.dpcm_playback = 1,
 		.dpcm_capture = 1,
@@ -722,7 +744,7 @@ static int snd_byt_rt5651_mc_probe(struct platform_device *pdev)
 		}
 
 		/* change defaults for Baytrail-CR capture */
-		byt_rt5651_quirk |= BYT_RT5651_IN1_MAP | RT5651_JD1_1;
+		byt_rt5651_quirk |= BYT_RT5651_IN2_HS_IN3_MAP | RT5651_JD1_1;
 	} else {
 		byt_rt5651_quirk |= BYT_RT5651_DMIC_MAP;
 	}

@@ -74,6 +74,11 @@ static ssize_t sf_reg_write(struct file *file, const char *buf, size_t size,
 	else
 		nwritten = size;
 
+	/* Make sure any pending writes done through mmap are flushed */
+	err = filemap_fdatawait_range(inode->i_mapping, pos, pos + nwritten);
+	if (err)
+		return err;
+
 	err = vboxsf_write(sf_g->root, sf_r->handle, pos, &nwritten, buf, true);
 	if (err)
 		return err;
@@ -82,7 +87,11 @@ static ssize_t sf_reg_write(struct file *file, const char *buf, size_t size,
 	if (*off > inode->i_size)
 		i_size_write(inode, *off);
 
-	/* size changed */
+	/* Invalidate page-cache so that mmap using apps see the changes too */
+	invalidate_mapping_pages(inode->i_mapping, pos >> PAGE_SHIFT,
+				 *off >> PAGE_SHIFT);
+
+	/* mtime changed */
 	sf_i->force_restat = 1;
 	return nwritten;
 }
@@ -264,10 +273,13 @@ static int sf_writepage(struct page *page, struct writeback_control *wbc)
 	err = vboxsf_write(sf_g->root, sf_r->handle, off, &nwrite, buf, false);
 	kunmap(page);
 
-	if (err == 0)
+	if (err == 0) {
 		ClearPageError(page);
-	else
+		/* mtime changed */
+		sf_i->force_restat = 1;
+	} else {
 		ClearPageUptodate(page);
+	}
 
 	unlock_page(page);
 	return err;
@@ -292,6 +304,9 @@ int sf_write_end(struct file *file, struct address_space *mapping, loff_t pos,
 
 	if (err)
 		goto out;
+
+	/* mtime changed */
+	GET_INODE_INFO(inode)->force_restat = 1;
 
 	if (!PageUptodate(page) && nwritten == PAGE_SIZE)
 		SetPageUptodate(page);

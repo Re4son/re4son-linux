@@ -1,1 +1,1 @@
-obj-$(CONFIG_USB_ROLES_INTEL_CHT) += intel-cht-usb-role-switch.o
+obj-$(CONFIG_USB_ROLES_INTEL_XHCI) += intel-xhci-usb-role-switch.o

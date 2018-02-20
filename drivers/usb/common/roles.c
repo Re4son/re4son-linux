@@ -134,9 +134,9 @@ usb_role_switch_is_visible(struct kobject *kobj, struct attribute *attr, int n)
 	struct usb_role_switch *sw = to_role_switch(dev);
 
 	if (sw->allow_userspace_control)
-		return 0644;
+		return attr->mode;
 
-	return 0444;
+	return 0;
 }
 
 static const char * const usb_roles[] = {
@@ -169,10 +169,6 @@ static ssize_t role_store(struct device *dev, struct device_attribute *attr,
 		if (ret || res)
 			return -EINVAL;
 	}
-
-	/* Catch users doing a chmod on the sysfs attr */
-	if (!sw->allow_userspace_control)
-		return -EPERM;
 
 	ret = usb_role_switch_set_role(sw, ret);
 	if (!ret)

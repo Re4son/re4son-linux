@@ -450,7 +450,7 @@ static int intel_sst_suspend(struct device *dev)
 			return -EBUSY;
 		}
 
-		if (ctx->streams_lost_on_suspend) {
+		if (ctx->pdata->streams_lost_on_suspend) {
 			stream->resume_status = stream->status;
 			stream->resume_prev = stream->prev;
 			if (stream->status != STREAM_UN_INIT)
@@ -557,7 +557,7 @@ static int intel_sst_resume(struct device *dev)
 		sst_set_fw_state_locked(ctx, SST_FW_RUNNING);
 	}
 
-	if (ctx->streams_lost_on_suspend) {
+	if (ctx->pdata->streams_lost_on_suspend) {
 		for (i = 1; i <= ctx->info.max_streams; i++) {
 			struct stream_info *stream = &ctx->streams[i];
 

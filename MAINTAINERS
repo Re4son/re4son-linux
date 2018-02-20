@@ -9207,6 +9207,7 @@ MIPS GENERIC PLATFORM
 M:	Paul Burton <paul.burton@mips.com>
 L:	linux-mips@linux-mips.org
 S:	Supported
+F:	Documentation/devicetree/bindings/power/mti,mips-cpc.txt
 F:	arch/mips/generic/
 F:	arch/mips/tools/generic-board-config.sh
 
@@ -9946,6 +9947,7 @@ F:	drivers/nfc/nxp-nci
 
 OBJTOOL
 M:	Josh Poimboeuf <jpoimboe@redhat.com>
+M:	Peter Zijlstra <peterz@infradead.org>
 S:	Supported
 F:	tools/objtool/
 
@@ -14385,11 +14387,11 @@ S:	Maintained
 F:	Documentation/hid/hiddev.txt
 F:	drivers/hid/usbhid/
 
-USB INTEL CHT ROLE MUX DRIVER
+USB INTEL XHCI ROLE MUX DRIVER
 M:	Hans de Goede <hdegoede@redhat.com>
 L:	linux-usb@vger.kernel.org
 S:	Maintained
-F:	drivers/usb/roles/intel-cht-usb-role-switch.c
+F:	drivers/usb/roles/intel-xhci-usb-role-switch.c
 
 USB ISP116X DRIVER
 M:	Olav Kongas <ok@artecdesign.ee>

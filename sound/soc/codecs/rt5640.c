@@ -2108,7 +2108,7 @@ static void rt5640_enable_micbias1_ovcd(struct snd_soc_codec *codec)
 	snd_soc_dapm_mutex_lock(dapm);
 	snd_soc_dapm_force_enable_pin_unlocked(dapm, "LDO2");
 	snd_soc_dapm_force_enable_pin_unlocked(dapm, "MICBIAS1");
-	/* OVCD is *very* *unreliable* when used with the RC-clk */
+	/* OVCD is unreliable when used with RCCLK as sysclk-source */
 	if (rt5640->jack_data->clk)
 		snd_soc_dapm_force_enable_pin_unlocked(dapm,
 						       rt5640->jack_data->clk);
@@ -2398,27 +2398,26 @@ static int rt5640_set_jack(struct snd_soc_codec *codec,
 	snd_soc_write(codec, RT5640_DUMMY2, 0x4001);
 
 	/*
-	 * Configure micbias over-current-detect at 2000uA, lower values
-	 * lead to false positive triggering of ovcd with headsets.
+	 * Enable OVCD at 1500uA, we do this by selecting 2000uA and a scale-
+	 * factor of 0.75, using a scale factor 0f 1.0 seems to be unreliable.
+	 * OVCD seems to be more reliable when enabled before enabling the
+	 * LDO2 / MICBIAS1 supplies, so we enable it here once.
 	 */
 	snd_soc_write(codec, RT5640_PR_BASE + RT5640_BIAS_CUR4,
 		      0xa800 | RT5640_MIC_OVCD_SF_0P75);
 
-	/*
-	 * Enable OVCD here once, it *must* be enabled *before* enabling the
-	 * LDO2 / MICBIAS1 supplies and enabling it once here is the only way
-	 * to guarantee this.
-	 */
 	snd_soc_update_bits(codec, RT5640_MICBIAS,
 			    RT5640_MIC1_OVTH_MASK | RT5640_MIC1_OVCD_MASK,
 			    RT5640_MIC1_OVTH_2000UA | RT5640_MIC1_OVCD_EN);
 
 	/*
 	 * The over-current-detect is only reliable in detecting the absence
-	 * of over-current, when the mic-contact in the jack is short-circuited
-	 * so there clearly is an overcurrent, the ovcd status flip-flops
-	 * 0-1-0-1, so we enable sticky mode and when checking OVCD we clear
-	 * the status, msleep() a bit and then check to get a reliable reading.
+	 * of over-current, when the mic-contact in the jack is short-circuited,
+	 * the hardware periodically retries if it can apply the bias-current
+	 * leading to the ovcd status flip-flopping 1-0-1 with it being 0 about
+	 * 10% of the time, as we poll the ovcd status bit we might hit that
+	 * 10%, so we enable sticky mode and when checking OVCD we clear the
+	 * status, msleep() a bit and then check to get a reliable reading.
 	 */
 	snd_soc_update_bits(codec, RT5640_IRQ_CTRL2, RT5640_MB1_OC_STKY_MASK,
 			    RT5640_MB1_OC_STKY_EN);

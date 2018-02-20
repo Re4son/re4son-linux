@@ -182,7 +182,7 @@ static int cht_int33fe_probe(struct i2c_client *client)
 	data->connections[1].endpoint[1] = "i2c-pi3usb30532";
 	data->connections[1].id = "typec-mux";
 	data->connections[2].endpoint[0] = "i2c-fusb302";
-	data->connections[2].endpoint[1] = "intel_cht_usb_sw-role-switch";
+	data->connections[2].endpoint[1] = "intel_xhci_usb_sw-role-switch";
 	data->connections[2].id = "usb-role-switch";
 
 	add_device_connection(&data->connections[0]);
@@ -206,7 +206,6 @@ static int cht_int33fe_probe(struct i2c_client *client)
 	data->pi3usb30532 = i2c_acpi_new_device(dev, 3, &board_info);
 	if (!data->pi3usb30532)
 		goto out_unregister_fusb302;
-
 
 	i2c_set_clientdata(client, data);
 

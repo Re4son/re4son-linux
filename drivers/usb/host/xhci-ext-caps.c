@@ -16,7 +16,7 @@ static void xhci_intel_unregister_pdev(void *arg)
 	platform_device_unregister(arg);
 }
 
-static int xhci_create_intel_cht_sw_pdev(struct xhci_hcd *xhci, u32 cap_offset)
+static int xhci_create_intel_xhci_sw_pdev(struct xhci_hcd *xhci, u32 cap_offset)
 {
 	struct usb_hcd *hcd = xhci_to_hcd(xhci);
 	struct device *dev = hcd->self.controller;
@@ -24,20 +24,20 @@ static int xhci_create_intel_cht_sw_pdev(struct xhci_hcd *xhci, u32 cap_offset)
 	struct resource	res = { 0, };
 	int ret;
 
-	pdev = platform_device_alloc("intel_cht_usb_sw", PLATFORM_DEVID_NONE);
+	pdev = platform_device_alloc("intel_xhci_usb_sw", PLATFORM_DEVID_NONE);
 	if (!pdev) {
-		xhci_err(xhci, "couldn't allocate intel_cht_usb_sw pdev\n");
+		xhci_err(xhci, "couldn't allocate intel_xhci_usb_sw pdev\n");
 		return -ENOMEM;
 	}
 
 	res.start = hcd->rsrc_start + cap_offset;
 	res.end	  = res.start + 0x3ff;
-	res.name  = "intel_cht_usb_sw";
+	res.name  = "intel_xhci_usb_sw";
 	res.flags = IORESOURCE_MEM;
 
 	ret = platform_device_add_resources(pdev, &res, 1);
 	if (ret) {
-		dev_err(dev, "couldn't add resources to intel_cht_usb_sw pdev\n");
+		dev_err(dev, "couldn't add resources to intel_xhci_usb_sw pdev\n");
 		platform_device_put(pdev);
 		return ret;
 	}
@@ -46,14 +46,14 @@ static int xhci_create_intel_cht_sw_pdev(struct xhci_hcd *xhci, u32 cap_offset)
 
 	ret = platform_device_add(pdev);
 	if (ret) {
-		dev_err(dev, "couldn't register intel_cht_usb_sw pdev\n");
+		dev_err(dev, "couldn't register intel_xhci_usb_sw pdev\n");
 		platform_device_put(pdev);
 		return ret;
 	}
 
 	ret = devm_add_action_or_reset(dev, xhci_intel_unregister_pdev, pdev);
 	if (ret) {
-		dev_err(dev, "couldn't add unregister action for intel_cht_usb_sw pdev\n");
+		dev_err(dev, "couldn't add unregister action for intel_xhci_usb_sw pdev\n");
 		return ret;
 	}
 
@@ -73,8 +73,8 @@ int xhci_ext_cap_init(struct xhci_hcd *xhci)
 
 		switch (XHCI_EXT_CAPS_ID(val)) {
 		case XHCI_EXT_CAPS_VENDOR_INTEL:
-			if (xhci->quirks & XHCI_INTEL_CHT_USB_MUX) {
-				ret = xhci_create_intel_cht_sw_pdev(
+			if (xhci->quirks & XHCI_INTEL_USB_ROLE_SW) {
+				ret = xhci_create_intel_xhci_sw_pdev(
 							    xhci, cap_offset);
 				if (ret)
 					return ret;

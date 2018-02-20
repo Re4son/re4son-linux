@@ -321,14 +321,12 @@ static void axp288_extcon_enable(struct axp288_extcon_info *info)
 					BC_GLOBAL_RUN, BC_GLOBAL_RUN);
 }
 
-static void put_role_sw(void *data)
+static void axp288_put_role_sw(void *data)
 {
-	usb_role_switch_put(data);
-}
+	struct axp288_extcon_info *info = data;
 
-static void cancel_role_work(void *data)
-{
-	cancel_work_sync(data);
+	cancel_work_sync(&info->role_work);
+	usb_role_switch_put(info->role_sw);
 }
 
 static int axp288_extcon_probe(struct platform_device *pdev)
@@ -351,24 +349,23 @@ static int axp288_extcon_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, info);
 
-	if (acpi_dev_present("INT3496", NULL, -1)) {
-		info->id_extcon = extcon_get_extcon_dev("INT3496:00");
-		if (!info->id_extcon)
-			return -EPROBE_DEFER;
-	}
-
 	info->role_sw = usb_role_switch_get(dev);
 	if (IS_ERR(info->role_sw))
 		return PTR_ERR(info->role_sw);
 	if (info->role_sw) {
-		ret = devm_add_action_or_reset(dev, put_role_sw, info->role_sw);
+		ret = devm_add_action_or_reset(dev, axp288_put_role_sw, info);
 		if (ret)
 			return ret;
 
-		if (info->id_extcon)
+		if (acpi_dev_present("INT3496", NULL, -1)) {
+			info->id_extcon = extcon_get_extcon_dev("INT3496:00");
+			if (!info->id_extcon)
+				return -EPROBE_DEFER;
+
 			dev_info(dev, "controlling USB role\n");
-		else
+		} else {
 			dev_info(dev, "controlling USB role based on vbus presence\n");
+		}
 	}
 
 	info->vbus_attach = axp288_get_vbus_attach(info);
@@ -389,11 +386,6 @@ static int axp288_extcon_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "failed to register extcon device\n");
 		return ret;
 	}
-
-	/* Make sure work is stopped on probe-error / remove */
-	ret = devm_add_action_or_reset(dev, cancel_role_work, &info->role_work);
-	if (ret)
-		return ret;
 
 	for (i = 0; i < EXTCON_IRQ_END; i++) {
 		pirq = platform_get_irq(pdev, i);
@@ -454,7 +446,7 @@ static struct platform_driver axp288_extcon_driver = {
 
 static struct devcon axp288_extcon_role_sw_conn = {
 	.endpoint[0] = "axp288_extcon",
-	.endpoint[1] = "intel_cht_usb_sw-role-switch",
+	.endpoint[1] = "intel_xhci_usb_sw-role-switch",
 	.id = "usb-role-switch",
 };
 

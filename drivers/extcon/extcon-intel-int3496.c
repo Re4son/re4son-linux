@@ -131,15 +131,11 @@ static int int3496_probe(struct platform_device *pdev)
 	if (IS_ERR(data->gpio_usb_mux))
 		dev_info(dev, "can't request USB MUX GPIO\n");
 
+	/* register extcon device */
 	data->edev = devm_extcon_dev_allocate(dev, int3496_cable);
 	if (IS_ERR(data->edev))
 		return -ENOMEM;
 
-	/* process id-pin first so that we start with the right status */
-	queue_delayed_work(system_wq, &data->work, 0);
-	flush_delayed_work(&data->work);
-
-	/* register extcon device */
 	ret = devm_extcon_dev_register(dev, data->edev);
 	if (ret < 0) {
 		dev_err(dev, "can't register extcon device: %d\n", ret);
@@ -156,6 +152,10 @@ static int int3496_probe(struct platform_device *pdev)
 		dev_err(dev, "can't request IRQ for USB ID GPIO: %d\n", ret);
 		return ret;
 	}
+
+	/* process id-pin so that we start with the right status */
+	queue_delayed_work(system_wq, &data->work, 0);
+	flush_delayed_work(&data->work);
 
 	platform_set_drvdata(pdev, data);
 
