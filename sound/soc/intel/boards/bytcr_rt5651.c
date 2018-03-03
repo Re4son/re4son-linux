@@ -20,6 +20,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/property.h>
 #include <linux/acpi.h>
 #include <linux/clk.h>
 #include <linux/device.h>
@@ -36,36 +37,62 @@
 #include "../atom/sst-atom-controls.h"
 
 enum {
-	/* Bits 0-3 are reserved for JD_SRC values */
-	BYT_RT5651_DMIC_MAP		= (0 << 4),
-	BYT_RT5651_IN1_MAP		= (1 << 4),
-	BYT_RT5651_IN2_MAP		= (2 << 4),
-	BYT_RT5651_IN1_IN2_MAP		= (3 << 4),
-	BYT_RT5651_IN1_HS_IN3_MAP	= (4 << 4),
-	BYT_RT5651_IN2_HS_IN3_MAP	= (5 << 4),
+	BYT_RT5651_DMIC_MAP,
+	BYT_RT5651_IN1_MAP,
+	BYT_RT5651_IN2_MAP,
+	BYT_RT5651_IN1_IN2_MAP,
+	BYT_RT5651_IN1_HS_IN3_MAP,
+	BYT_RT5651_IN2_HS_IN3_MAP,
 };
 
-#define BYT_RT5651_JDSRC(quirk)	((quirk) & GENMASK(3, 0)) /* RT5651_JD* value */
-#define BYT_RT5651_MAP(quirk)	((quirk) & GENMASK(7, 4))
-#define BYT_RT5651_DMIC_EN	BIT(16)
-#define BYT_RT5651_MCLK_EN	BIT(17)
-#define BYT_RT5651_MCLK_25MHZ	BIT(18)
-#define BYT_RT5651_SSP2_AIF2    BIT(19) /* default is using AIF1  */
-#define BYT_RT5651_SSP0_AIF1    BIT(20)
-#define BYT_RT5651_SSP0_AIF2    BIT(21)
+enum {
+	BYT_RT5651_JD_NULL	= (RT5651_JD_NULL << 4),
+	BYT_RT5651_JD1_1	= (RT5651_JD1_1 << 4),
+	BYT_RT5651_JD1_2	= (RT5651_JD1_2 << 4),
+	BYT_RT5651_JD2		= (RT5651_JD2 << 4),
+};
+
+enum {
+	BYT_RT5651_OVCD_TH_600UA  = (6 << 8),
+	BYT_RT5651_OVCD_TH_1500UA = (15 << 8),
+	BYT_RT5651_OVCD_TH_2000UA = (20 << 8),
+};
+
+enum {
+	BYT_RT5651_OVCD_SF_0P5	= (RT5651_OVCD_SF_0P5 << 13),
+	BYT_RT5651_OVCD_SF_0P75	= (RT5651_OVCD_SF_0P75 << 13),
+	BYT_RT5651_OVCD_SF_1P0	= (RT5651_OVCD_SF_1P0 << 13),
+	BYT_RT5651_OVCD_SF_1P5	= (RT5651_OVCD_SF_1P5 << 13),
+};
+
+#define BYT_RT5651_MAP(quirk)		((quirk) & GENMASK(3, 0))
+#define BYT_RT5651_JDSRC(quirk)		(((quirk) & GENMASK(7, 4)) >> 4)
+#define BYT_RT5651_OVCD_TH(quirk)	(((quirk) & GENMASK(12, 8)) >> 8)
+#define BYT_RT5651_OVCD_SF(quirk)	(((quirk) & GENMASK(14, 13)) >> 13)
+#define BYT_RT5651_DMIC_EN		BIT(16)
+#define BYT_RT5651_MCLK_EN		BIT(17)
+#define BYT_RT5651_MCLK_25MHZ		BIT(18)
+#define BYT_RT5651_SSP2_AIF2		BIT(19) /* default is using AIF1  */
+#define BYT_RT5651_SSP0_AIF1		BIT(20)
+#define BYT_RT5651_SSP0_AIF2		BIT(21)
+
+/* jack-detect-source + dmic-en + ovcd-th + -sf + terminating empty entry */
+#define MAX_NO_PROPS 5
 
 struct byt_rt5651_private {
 	struct clk *mclk;
 	struct snd_soc_jack jack;
 };
 
-static unsigned long byt_rt5651_quirk = BYT_RT5651_MCLK_EN;
+/* Default: jack-detect on JD1_1, internal mic on in2, headsetmic on in3 */
+static unsigned long byt_rt5651_quirk = BYT_RT5651_MCLK_EN |
+					BYT_RT5651_JD1_1 |
+					BYT_RT5651_OVCD_TH_2000UA |
+					BYT_RT5651_OVCD_SF_0P75 |
+					BYT_RT5651_IN2_HS_IN3_MAP;
 
 static void log_quirks(struct device *dev)
 {
-	if (BYT_RT5651_JDSRC(byt_rt5651_quirk))
-		dev_info(dev, "quirk jack-detect src %ld\n",
-			 BYT_RT5651_JDSRC(byt_rt5651_quirk));
 	if (BYT_RT5651_MAP(byt_rt5651_quirk) == BYT_RT5651_DMIC_MAP)
 		dev_info(dev, "quirk DMIC_MAP enabled");
 	if (BYT_RT5651_MAP(byt_rt5651_quirk) == BYT_RT5651_IN1_MAP)
@@ -76,6 +103,14 @@ static void log_quirks(struct device *dev)
 		dev_info(dev, "quirk IN1_HS_IN3_MAP enabled");
 	if (BYT_RT5651_MAP(byt_rt5651_quirk) == BYT_RT5651_IN2_HS_IN3_MAP)
 		dev_info(dev, "quirk IN2_HS_IN3_MAP enabled");
+	if (BYT_RT5651_JDSRC(byt_rt5651_quirk)) {
+		dev_info(dev, "quirk realtek,jack-detect-source %ld\n",
+			 BYT_RT5651_JDSRC(byt_rt5651_quirk));
+		dev_info(dev, "quirk realtek,over-current-threshold %ld\n",
+			 BYT_RT5651_OVCD_TH(byt_rt5651_quirk) * 100);
+		dev_info(dev, "quirk realtek,over-current-scale-factor %ld\n",
+			 BYT_RT5651_OVCD_SF(byt_rt5651_quirk));
+	}
 	if (byt_rt5651_quirk & BYT_RT5651_DMIC_EN)
 		dev_info(dev, "quirk DMIC enabled");
 	if (byt_rt5651_quirk & BYT_RT5651_MCLK_EN)
@@ -94,37 +129,22 @@ static void log_quirks(struct device *dev)
 #define BYT_CODEC_DAI2	"rt5651-aif2"
 
 static int byt_rt5651_prepare_and_enable_pll1(struct snd_soc_dai *codec_dai,
-					      int rate)
+					      int rate, int bclk_ratio)
 {
-	int ret;
+	int clk_id, clk_freq, ret;
 
 	/* Configure the PLL before selecting it */
 	if (!(byt_rt5651_quirk & BYT_RT5651_MCLK_EN)) {
-		/* use bitclock as PLL input */
-		if ((byt_rt5651_quirk & BYT_RT5651_SSP0_AIF1) ||
-		    (byt_rt5651_quirk & BYT_RT5651_SSP0_AIF2)) {
-			/* 2x16 bit slots on SSP0 */
-			ret = snd_soc_dai_set_pll(codec_dai, 0,
-						  RT5651_PLL1_S_BCLK1,
-						  rate * 32, rate * 512);
-		} else {
-			/* 2x25 bit slots on SSP2 */
-			ret = snd_soc_dai_set_pll(codec_dai, 0,
-						  RT5651_PLL1_S_BCLK1,
-						  rate * 50, rate * 512);
-		}
+		clk_id = RT5651_PLL1_S_BCLK1,
+		clk_freq = rate * bclk_ratio;
 	} else {
-		if (byt_rt5651_quirk & BYT_RT5651_MCLK_25MHZ) {
-			ret = snd_soc_dai_set_pll(codec_dai, 0,
-						  RT5651_PLL1_S_MCLK,
-						  25000000, rate * 512);
-		} else {
-			ret = snd_soc_dai_set_pll(codec_dai, 0,
-						  RT5651_PLL1_S_MCLK,
-						  19200000, rate * 512);
-		}
+		clk_id = RT5651_PLL1_S_MCLK;
+		if (byt_rt5651_quirk & BYT_RT5651_MCLK_25MHZ)
+			clk_freq = 25000000;
+		else
+			clk_freq = 19200000;
 	}
-
+	ret = snd_soc_dai_set_pll(codec_dai, 0, clk_id, clk_freq, rate * 512);
 	if (ret < 0) {
 		dev_err(codec_dai->codec->dev, "can't set pll: %d\n", ret);
 		return ret;
@@ -167,7 +187,7 @@ static int platform_clock_control(struct snd_soc_dapm_widget *w,
 				return ret;
 			}
 		}
-		ret = byt_rt5651_prepare_and_enable_pll1(codec_dai, 48000);
+		ret = byt_rt5651_prepare_and_enable_pll1(codec_dai, 48000, 50);
 	} else {
 		/*
 		 * Set codec clock source to internal clock before
@@ -316,11 +336,16 @@ static int byt_rt5651_aif1_hw_params(struct snd_pcm_substream *substream,
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+	snd_pcm_format_t format = params_format(params);
 	int rate = params_rate(params);
+	int bclk_ratio;
 
-	snd_soc_dai_set_bclk_ratio(codec_dai, 50);
+	if (format == SNDRV_PCM_FORMAT_S16_LE)
+		bclk_ratio = 32;
+	else
+		bclk_ratio = 50;
 
-	return byt_rt5651_prepare_and_enable_pll1(codec_dai, rate);
+	return byt_rt5651_prepare_and_enable_pll1(codec_dai, rate, bclk_ratio);
 }
 
 static int byt_rt5651_quirk_cb(const struct dmi_system_id *id)
@@ -354,8 +379,10 @@ static const struct dmi_system_id byt_rt5651_quirk_table[] = {
 			DMI_MATCH(DMI_PRODUCT_NAME, "KIANO SlimNote 14.2"),
 		},
 		.driver_data = (void *)(BYT_RT5651_MCLK_EN |
-					BYT_RT5651_IN1_IN2_MAP |
-					RT5651_JD1_1),
+					BYT_RT5651_JD1_1 |
+					BYT_RT5651_OVCD_TH_2000UA |
+					BYT_RT5651_OVCD_SF_0P75 |
+					BYT_RT5651_IN1_IN2_MAP),
 	},
 	{
 		/* Chuwi Vi8 Plus (CWI519) */
@@ -364,9 +391,24 @@ static const struct dmi_system_id byt_rt5651_quirk_table[] = {
 			DMI_MATCH(DMI_SYS_VENDOR, "Hampoo"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "D2D3_Vi8A1"),
 		},
-		.driver_data = (void *)(BYT_RT5651_IN2_HS_IN3_MAP |
-					BYT_RT5651_MCLK_EN |
-					RT5651_JD1_1),
+		.driver_data = (void *)(BYT_RT5651_MCLK_EN |
+					BYT_RT5651_JD1_1 |
+					BYT_RT5651_OVCD_TH_2000UA |
+					BYT_RT5651_OVCD_SF_0P75 |
+					BYT_RT5651_IN2_HS_IN3_MAP),
+	},
+	{
+		/* VIOS LTH17 */
+		.callback = byt_rt5651_quirk_cb,
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "VIOS"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "LTH17"),
+		},
+		.driver_data = (void *)(BYT_RT5651_MCLK_EN |
+					BYT_RT5651_JD1_1 |
+					BYT_RT5651_OVCD_TH_2000UA |
+					BYT_RT5651_OVCD_SF_1P0 |
+					BYT_RT5651_IN1_IN2_MAP),
 	},
 	{}
 };
@@ -374,14 +416,19 @@ static const struct dmi_system_id byt_rt5651_quirk_table[] = {
 static int byt_rt5651_init(struct snd_soc_pcm_runtime *runtime)
 {
 	struct snd_soc_card *card = runtime->card;
-	struct snd_soc_codec *codec = runtime->codec;
+	struct snd_soc_component *codec = runtime->codec_dai->component;
 	struct byt_rt5651_private *priv = snd_soc_card_get_drvdata(card);
+	struct property_entry props[MAX_NO_PROPS] = {};
 	const struct snd_soc_dapm_route *custom_map;
-	struct rt5651_platform_data pdata = {};
-	int num_routes;
+	int num_routes, cnt = 0;
 	int ret;
 
 	card->dapm.idle_bias_off = true;
+
+	/* Start with RC clk for jack-detect (we disable MCLK below) */
+	if (byt_rt5651_quirk & BYT_RT5651_MCLK_EN)
+		snd_soc_component_update_bits(codec, RT5651_GLB_CLK,
+			RT5651_SCLK_SRC_MASK, RT5651_SCLK_SRC_RCCLK);
 
 	switch (BYT_RT5651_MAP(byt_rt5651_quirk)) {
 	case BYT_RT5651_IN1_MAP:
@@ -463,22 +510,34 @@ static int byt_rt5651_init(struct snd_soc_pcm_runtime *runtime)
 			dev_err(card->dev, "unable to set MCLK rate\n");
 	}
 
+	props[cnt++] = PROPERTY_ENTRY_U32("realtek,jack-detect-source",
+				BYT_RT5651_JDSRC(byt_rt5651_quirk));
+
+	props[cnt++] = PROPERTY_ENTRY_U32("realtek,over-current-threshold",
+				BYT_RT5651_OVCD_TH(byt_rt5651_quirk) * 100);
+
+	props[cnt++] = PROPERTY_ENTRY_U32("realtek,over-current-scale-factor",
+				BYT_RT5651_OVCD_SF(byt_rt5651_quirk));
+
 	if (byt_rt5651_quirk & BYT_RT5651_DMIC_EN)
-		pdata.dmic_en = true;
-	pdata.jd_src = BYT_RT5651_JDSRC(byt_rt5651_quirk);
-	pdata.clk = "Platform Clock";
-	rt5651_set_pdata(codec, &pdata);
+		props[cnt++] = PROPERTY_ENTRY_BOOL("realtek,dmic-en");
+
+	ret = device_add_properties(codec->dev, props);
+	if (ret)
+		return ret;
+
+	rt5651_apply_properties(codec);
 
 	if (BYT_RT5651_JDSRC(byt_rt5651_quirk)) {
 		ret = snd_soc_card_jack_new(runtime->card, "Headset",
-				SND_JACK_HEADSET, &priv->jack,
-				bytcr_jack_pins, ARRAY_SIZE(bytcr_jack_pins));
+				    SND_JACK_HEADSET, &priv->jack,
+				    bytcr_jack_pins, ARRAY_SIZE(bytcr_jack_pins));
 		if (ret) {
-			dev_err(runtime->dev, "Jack creation failed %d\n", ret);
+			dev_err(runtime->dev, "jack creation failed %d\n", ret);
 			return ret;
 		}
 
-		ret = snd_soc_codec_set_jack(codec, &priv->jack, NULL);
+		ret = snd_soc_component_set_jack(codec, &priv->jack, NULL);
 		if (ret)
 			return ret;
 	}
@@ -742,11 +801,6 @@ static int snd_byt_rt5651_mc_probe(struct platform_device *pdev)
 			/* no BIOS indications, assume SSP0-AIF2 connection */
 			byt_rt5651_quirk |= BYT_RT5651_SSP0_AIF2;
 		}
-
-		/* change defaults for Baytrail-CR capture */
-		byt_rt5651_quirk |= BYT_RT5651_IN2_HS_IN3_MAP | RT5651_JD1_1;
-	} else {
-		byt_rt5651_quirk |= BYT_RT5651_DMIC_MAP;
 	}
 
 	/* check quirks before creating card */

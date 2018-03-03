@@ -1598,8 +1598,8 @@
 #define RT5651_MB1_OC_P_NOR			(0x0 << 7)
 #define RT5651_MB1_OC_P_INV			(0x1 << 7)
 #define RT5651_MB2_OC_P_MASK			(0x1 << 6)
-#define RT5651_MB1_OC_STATUS			(0x1 << 3)
-#define RT5651_MB1_OC_STATUS_SFT		3
+#define RT5651_MB1_OC_CLR			(0x1 << 3)
+#define RT5651_MB1_OC_CLR_SFT			3
 #define RT5651_STA_GPIO8			(0x1)
 #define RT5651_STA_GPIO8_BIT			0
 
@@ -2069,11 +2069,11 @@ struct rt5651_pll_code {
 };
 
 struct rt5651_priv {
-	struct snd_soc_codec *codec;
-	struct rt5651_platform_data pdata;
+	struct snd_soc_component *component;
 	struct regmap *regmap;
 	struct snd_soc_jack *hp_jack;
 	struct work_struct jack_detect_work;
+	enum rt5651_jd_src jd_src;
 
 	int irq;
 	int sysclk;
@@ -2090,7 +2090,6 @@ struct rt5651_priv {
 	bool hp_mute;
 };
 
-void rt5651_set_pdata(struct snd_soc_codec *codec,
-		      struct rt5651_platform_data *pdata);
+void rt5651_apply_properties(struct snd_soc_component *component);
 
 #endif /* __RT5651_H__ */

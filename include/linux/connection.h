@@ -11,6 +11,7 @@ struct device;
  * struct devcon - Device Connection Descriptor
  * @endpoint: The names of the two devices connected together
  * @id: Unique identifier for the connection
+ * @list: List head, private for devcon internal use only
  */
 struct devcon {
 	const char		*endpoint[2];
@@ -25,7 +26,7 @@ void *__device_find_connection(struct device *dev, const char *con_id,
 
 struct device *device_find_connection(struct device *dev, const char *con_id);
 
-#define DEVCON(_ep0, _ep1, _id)		{ { _ep0, _ep1 }, _id, }
+#define DEVCON(_ep0, _ep1, _id)    (struct devcon) { { _ep0, _ep1 }, _id, }
 
 void add_device_connection(struct devcon *con);
 void remove_device_connection(struct devcon *con);

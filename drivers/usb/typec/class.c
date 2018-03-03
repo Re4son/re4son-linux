@@ -423,7 +423,8 @@ typec_register_altmode(struct device *parent,
  */
 void typec_unregister_altmode(struct typec_altmode *alt)
 {
-	device_unregister(&alt->dev);
+	if (!IS_ERR_OR_NULL(alt))
+		device_unregister(&alt->dev);
 }
 EXPORT_SYMBOL_GPL(typec_unregister_altmode);
 
@@ -562,7 +563,8 @@ EXPORT_SYMBOL_GPL(typec_register_partner);
  */
 void typec_unregister_partner(struct typec_partner *partner)
 {
-	device_unregister(&partner->dev);
+	if (!IS_ERR_OR_NULL(partner))
+		device_unregister(&partner->dev);
 }
 EXPORT_SYMBOL_GPL(typec_unregister_partner);
 
@@ -650,7 +652,8 @@ EXPORT_SYMBOL_GPL(typec_register_plug);
  */
 void typec_unregister_plug(struct typec_plug *plug)
 {
-	device_unregister(&plug->dev);
+	if (!IS_ERR_OR_NULL(plug))
+		device_unregister(&plug->dev);
 }
 EXPORT_SYMBOL_GPL(typec_unregister_plug);
 
@@ -775,7 +778,8 @@ EXPORT_SYMBOL_GPL(typec_register_cable);
  */
 void typec_unregister_cable(struct typec_cable *cable)
 {
-	device_unregister(&cable->dev);
+	if (!IS_ERR_OR_NULL(cable))
+		device_unregister(&cable->dev);
 }
 EXPORT_SYMBOL_GPL(typec_unregister_cable);
 
@@ -1407,7 +1411,8 @@ EXPORT_SYMBOL_GPL(typec_register_port);
  */
 void typec_unregister_port(struct typec_port *port)
 {
-	device_unregister(&port->dev);
+	if (!IS_ERR_OR_NULL(port))
+		device_unregister(&port->dev);
 }
 EXPORT_SYMBOL_GPL(typec_unregister_port);
 

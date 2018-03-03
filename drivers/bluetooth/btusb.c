@@ -381,18 +381,11 @@ static const struct usb_device_id blacklist_table[] = {
 };
 
 /*
- * The btusb build into some devices needs to be reset on resume, this is a
- * problem with the platform (likely shutting off all power) not with the
- * btusb chip itself. So we use a DMI list to match known broken platforms.
+ * The Bluetooth USB module build into some devices needs to be reset on resume,
+ * this is a problem with the platform (likely shutting off all power) not with
+ * the module itself. So we use a DMI list to match known broken platforms.
  */
-static const struct dmi_system_id btusb_plat_needs_reset_resume_list[] = {
-	{
-		/* Lenovo yoga 920 */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
-			DMI_MATCH(DMI_PRODUCT_VERSION, "Lenovo YOGA 920"),
-		},
-	},
+static const struct dmi_system_id btusb_needs_reset_resume_table[] = {
 	{}
 };
 
@@ -2962,7 +2955,7 @@ static int btusb_probe(struct usb_interface *intf,
 	hdev->send   = btusb_send_frame;
 	hdev->notify = btusb_notify;
 
-	if (dmi_check_system(btusb_plat_needs_reset_resume_list))
+	if (dmi_check_system(btusb_needs_reset_resume_table))
 		interface_to_usbdev(intf)->quirks |= USB_QUIRK_RESET_RESUME;
 
 #ifdef CONFIG_PM

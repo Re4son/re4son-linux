@@ -1,15 +1,15 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * XHCI extended capability handling
  *
  * Copyright (c) 2017 Hans de Goede <hdegoede@redhat.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <linux/platform_device.h>
 #include "xhci.h"
+
+#define USB_SW_DRV_NAME		"intel_xhci_usb_sw"
+#define USB_SW_RESOURCE_SIZE	0x400
 
 static void xhci_intel_unregister_pdev(void *arg)
 {
@@ -24,15 +24,16 @@ static int xhci_create_intel_xhci_sw_pdev(struct xhci_hcd *xhci, u32 cap_offset)
 	struct resource	res = { 0, };
 	int ret;
 
-	pdev = platform_device_alloc("intel_xhci_usb_sw", PLATFORM_DEVID_NONE);
+	pdev = platform_device_alloc(USB_SW_DRV_NAME, PLATFORM_DEVID_NONE);
 	if (!pdev) {
-		xhci_err(xhci, "couldn't allocate intel_xhci_usb_sw pdev\n");
+		xhci_err(xhci, "couldn't allocate %s platform device\n",
+			 USB_SW_DRV_NAME);
 		return -ENOMEM;
 	}
 
 	res.start = hcd->rsrc_start + cap_offset;
-	res.end	  = res.start + 0x3ff;
-	res.name  = "intel_xhci_usb_sw";
+	res.end	  = res.start + USB_SW_RESOURCE_SIZE - 1;
+	res.name  = USB_SW_DRV_NAME;
 	res.flags = IORESOURCE_MEM;
 
 	ret = platform_device_add_resources(pdev, &res, 1);
@@ -63,25 +64,25 @@ static int xhci_create_intel_xhci_sw_pdev(struct xhci_hcd *xhci, u32 cap_offset)
 int xhci_ext_cap_init(struct xhci_hcd *xhci)
 {
 	void __iomem *base = &xhci->cap_regs->hc_capbase;
-	u32 cap_offset, val;
+	u32 offset, val;
 	int ret;
 
-	cap_offset = xhci_find_next_ext_cap(base, 0, 0);
+	offset = xhci_find_next_ext_cap(base, 0, 0);
 
-	while (cap_offset) {
-		val = readl(base + cap_offset);
+	while (offset) {
+		val = readl(base + offset);
 
 		switch (XHCI_EXT_CAPS_ID(val)) {
 		case XHCI_EXT_CAPS_VENDOR_INTEL:
 			if (xhci->quirks & XHCI_INTEL_USB_ROLE_SW) {
-				ret = xhci_create_intel_xhci_sw_pdev(
-							    xhci, cap_offset);
+				ret = xhci_create_intel_xhci_sw_pdev(xhci,
+								     offset);
 				if (ret)
 					return ret;
 			}
 			break;
 		}
-		cap_offset = xhci_find_next_ext_cap(base, cap_offset, 0);
+		offset = xhci_find_next_ext_cap(base, offset, 0);
 	}
 
 	return 0;

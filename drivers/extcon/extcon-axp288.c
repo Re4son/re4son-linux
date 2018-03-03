@@ -162,8 +162,8 @@ static void axp288_extcon_log_rsi(struct axp288_extcon_info *info)
  * 1) On many devices the USB role is controlled by AML code, but the AML code
  *    only switches between the host and none roles, because of Windows not
  *    really using device mode. To make device mode work we need to toggle
- *    between the none/device roles based on VBus presence, and this driver
- *    gets interrupts on VBus insertion / removal.
+ *    between the none/device roles based on Vbus presence, and this driver
+ *    gets interrupts on Vbus insertion / removal.
  * 2) In order for our BC1.2 charger detection to work properly the role
  *    mux must be properly set to device mode before we do the detection.
  */
@@ -334,6 +334,7 @@ static int axp288_extcon_probe(struct platform_device *pdev)
 	struct axp288_extcon_info *info;
 	struct axp20x_dev *axp20x = dev_get_drvdata(pdev->dev.parent);
 	struct device *dev = &pdev->dev;
+	const char *name;
 	int ret, i, pirq;
 
 	info = devm_kzalloc(&pdev->dev, sizeof(*info), GFP_KERNEL);
@@ -357,14 +358,15 @@ static int axp288_extcon_probe(struct platform_device *pdev)
 		if (ret)
 			return ret;
 
-		if (acpi_dev_present("INT3496", NULL, -1)) {
-			info->id_extcon = extcon_get_extcon_dev("INT3496:00");
+		name = acpi_dev_get_first_match_name("INT3496", NULL, -1);
+		if (name) {
+			info->id_extcon = extcon_get_extcon_dev(name);
 			if (!info->id_extcon)
 				return -EPROBE_DEFER;
 
 			dev_info(dev, "controlling USB role\n");
 		} else {
-			dev_info(dev, "controlling USB role based on vbus presence\n");
+			dev_info(dev, "controlling USB role based on Vbus presence\n");
 		}
 	}
 

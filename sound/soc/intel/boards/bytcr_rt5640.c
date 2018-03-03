@@ -464,7 +464,7 @@ static int byt_rt5640_init(struct snd_soc_pcm_runtime *runtime)
 {
 	struct snd_soc_card *card = runtime->card;
 	struct byt_rt5640_private *priv = snd_soc_card_get_drvdata(card);
-	struct snd_soc_codec *codec = runtime->codec;
+	struct snd_soc_component *component = runtime->codec_dai->component;
 	const struct snd_soc_dapm_route *custom_map;
 	int num_routes;
 	int ret;
@@ -472,10 +472,11 @@ static int byt_rt5640_init(struct snd_soc_pcm_runtime *runtime)
 	card->dapm.idle_bias_off = true;
 
 	/* Start with RC clk for jack-detect (we disable MCLK below) */
-	snd_soc_update_bits(codec, RT5640_GLB_CLK,
-		RT5640_SCLK_SRC_MASK, RT5640_SCLK_SRC_RCCLK);
+	if (byt_rt5640_quirk & BYT_RT5640_MCLK_EN)
+		snd_soc_component_update_bits(component, RT5640_GLB_CLK,
+			RT5640_SCLK_SRC_MASK, RT5640_SCLK_SRC_RCCLK);
 
-	rt5640_sel_asrc_clk_src(codec,
+	rt5640_sel_asrc_clk_src(component,
 				RT5640_DA_STEREO_FILTER |
 				RT5640_DA_MONO_L_FILTER	|
 				RT5640_DA_MONO_R_FILTER	|
@@ -546,12 +547,12 @@ static int byt_rt5640_init(struct snd_soc_pcm_runtime *runtime)
 		return ret;
 
 	if (byt_rt5640_quirk & BYT_RT5640_DIFF_MIC) {
-		snd_soc_update_bits(codec,  RT5640_IN1_IN2, RT5640_IN_DF1,
+		snd_soc_component_update_bits(component,  RT5640_IN1_IN2, RT5640_IN_DF1,
 				    RT5640_IN_DF1);
 	}
 
 	if (byt_rt5640_quirk & BYT_RT5640_DMIC_EN) {
-		ret = rt5640_dmic_enable(codec, 0, 0);
+		ret = rt5640_dmic_enable(component, 0, 0);
 		if (ret)
 			return ret;
 	}
@@ -593,10 +594,10 @@ static int byt_rt5640_init(struct snd_soc_pcm_runtime *runtime)
 		snd_jack_set_key(priv->jack.jack, SND_JACK_BTN_0,
 				 KEY_PLAYPAUSE);
 
-		priv->jack_data.clk = "Platform Clock";
 		priv->jack_data.pin = BYT_RT5640_JACK_PIN(byt_rt5640_quirk);
 
-		snd_soc_codec_set_jack(codec, &priv->jack, &priv->jack_data);
+		snd_soc_component_set_jack(component, &priv->jack,
+					   &priv->jack_data);
 	}
 
 	return ret;

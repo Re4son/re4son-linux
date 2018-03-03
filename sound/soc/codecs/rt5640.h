@@ -2120,12 +2120,11 @@ enum {
 };
 
 struct rt5640_jack_data {
-	const char *clk;	/* Platform clock (dapm supply) name */
 	int pin;		/* RT5640_JD_MASK value */
 };
 
 struct rt5640_priv {
-	struct snd_soc_codec *codec;
+	struct snd_soc_component *component;
 	struct rt5640_platform_data pdata;
 	struct regmap *regmap;
 	struct clk *mclk;
@@ -2144,22 +2143,15 @@ struct rt5640_priv {
 	bool hp_mute;
 	bool asrc_en;
 
-	/* Jack and button detect data */
-	bool ovcd_irq_enabled;
-	bool pressed;
-	bool press_reported;
-	int press_count;
-	int release_count;
-	int poll_count;
-	struct delayed_work bp_work;
+	/* Jack detect data */
 	struct work_struct jack_work;
 	struct snd_soc_jack *jack;
 	const struct rt5640_jack_data *jack_data;
 };
 
-int rt5640_dmic_enable(struct snd_soc_codec *codec,
+int rt5640_dmic_enable(struct snd_soc_component *component,
 		       bool dmic1_data_pin, bool dmic2_data_pin);
-int rt5640_sel_asrc_clk_src(struct snd_soc_codec *codec,
+int rt5640_sel_asrc_clk_src(struct snd_soc_component *component,
 		unsigned int filter_mask, unsigned int clk_src);
 
 #endif

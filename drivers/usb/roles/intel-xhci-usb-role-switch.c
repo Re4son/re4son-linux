@@ -22,12 +22,12 @@
 
 /* register definition */
 #define DUAL_ROLE_CFG0			0x68
-#define SW_VBUS_VALID			(1 << 24)
-#define SW_IDPIN_EN			(1 << 21)
-#define SW_IDPIN			(1 << 20)
+#define SW_VBUS_VALID			BIT(24)
+#define SW_IDPIN_EN			BIT(21)
+#define SW_IDPIN			BIT(20)
 
 #define DUAL_ROLE_CFG1			0x6c
-#define HOST_MODE			(1 << 29)
+#define HOST_MODE			BIT(29)
 
 #define DUAL_ROLE_CFG1_POLL_TIMEOUT	1000
 
@@ -57,8 +57,7 @@ static int intel_xhci_usb_set_role(struct device *dev, enum usb_role role)
 	struct intel_xhci_usb_data *data = dev_get_drvdata(dev);
 	unsigned long timeout;
 	acpi_status status;
-	u32 glk = -1U;
-	u32 val;
+	u32 glk, val;
 
 	/*
 	 * On many CHT devices ACPI event (_AEI) handlers read / modify /
@@ -138,21 +137,16 @@ static int intel_xhci_usb_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct intel_xhci_usb_data *data;
 	struct resource *res;
-	resource_size_t size;
-	int i, ret;
+	int i;
 
 	data = devm_kzalloc(dev, sizeof(*data), GFP_KERNEL);
 	if (!data)
 		return -ENOMEM;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	size = (res->end + 1) - res->start;
-	data->base = devm_ioremap_nocache(dev, res->start, size);
-	if (IS_ERR(data->base)) {
-		ret = PTR_ERR(data->base);
-		dev_err(dev, "Error iomaping registers: %d\n", ret);
-		return ret;
-	}
+	data->base = devm_ioremap_nocache(dev, res->start, resource_size(res));
+	if (IS_ERR(data->base))
+		return PTR_ERR(data->base);
 
 	for (i = 0; i < ARRAY_SIZE(allow_userspace_ctrl_ids); i++)
 		if (acpi_dev_present(allow_userspace_ctrl_ids[i].hid, "1",
@@ -162,11 +156,8 @@ static int intel_xhci_usb_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, data);
 
 	data->role_sw = usb_role_switch_register(dev, &sw_desc);
-	if (IS_ERR(data->role_sw)) {
-		ret = PTR_ERR(data->role_sw);
-		dev_err(dev, "Error registering role-switch: %d\n", ret);
-		return ret;
-	}
+	if (IS_ERR(data->role_sw))
+		return PTR_ERR(data->role_sw);
 
 	return 0;
 }
@@ -181,7 +172,7 @@ int intel_xhci_usb_remove(struct platform_device *pdev)
 
 static const struct platform_device_id intel_xhci_usb_table[] = {
 	{ .name = DRV_NAME },
-	{},
+	{}
 };
 MODULE_DEVICE_TABLE(platform, intel_xhci_usb_table);
 

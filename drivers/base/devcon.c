@@ -19,7 +19,7 @@ static LIST_HEAD(devcon_list);
  * @data: Data for the match function
  * @match: Function to check and convert the connection description
  *
- * Find a connection with unique identifier @con_id between @dev and an other
+ * Find a connection with unique identifier @con_id between @dev and another
  * device. @match will be used to convert the connection description to data the
  * caller is expecting to be returned.
  */
@@ -90,7 +90,7 @@ static void *generic_match(struct devcon *con, int ep, void *data)
 
 	/*
 	 * We only get called if a connection was found, tell the caller to
-	 * wait for the other device to show-up.
+	 * wait for the other device to show up.
 	 */
 	return ERR_PTR(-EPROBE_DEFER);
 }
@@ -100,15 +100,15 @@ static void *generic_match(struct devcon *con, int ep, void *data)
  * @dev: Device with the connection
  * @con_id: Identifier for the connection
  *
- * Find a connection with unique identifier @con_id between @dev and an
- * other device. On success returns handle to the device that is connected
+ * Find a connection with unique identifier @con_id between @dev and
+ * another device. On success returns handle to the device that is connected
  * to @dev, with the reference count for the found device incremented. Returns
  * NULL if no matching connection was found, or ERR_PTR(-EPROBE_DEFER) when a
  * connection was found but the other device has not been enumerated yet.
  */
 struct device *device_find_connection(struct device *dev, const char *con_id)
 {
-	return __device_find_connection(dev, con_id, generic_match, NULL);
+	return __device_find_connection(dev, con_id, NULL, generic_match);
 }
 EXPORT_SYMBOL_GPL(device_find_connection);
 

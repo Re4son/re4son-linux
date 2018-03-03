@@ -36,12 +36,13 @@ static int pi3usb30532_set_conf(struct pi3usb30532 *pi, u8 new_conf)
 		return 0;
 
 	ret = i2c_smbus_write_byte_data(pi->client, PI3USB30532_CONF, new_conf);
-	if (ret == 0)
-		pi->conf = new_conf;
-	else
+	if (ret) {
 		dev_err(&pi->client->dev, "Error writing conf: %d\n", ret);
+		return ret;
+	}
 
-	return ret;
+	pi->conf = new_conf;
+	return 0;
 }
 
 static int pi3usb30532_sw_set(struct typec_switch *sw,

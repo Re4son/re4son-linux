@@ -9,7 +9,7 @@
 struct device;
 
 /**
- * typec_switch - USB Type-C cable orientation switch
+ * struct typec_switch - USB Type-C cable orientation switch
  * @dev: Switch device
  * @entry: List entry
  * @set: Callback to the driver for setting the orientation
@@ -26,7 +26,7 @@ struct typec_switch {
 };
 
 /**
- * typec_switch - USB Type-C connector pin mux
+ * struct typec_switch - USB Type-C connector pin mux
  * @dev: Mux device
  * @entry: List entry
  * @set: Callback to the driver for setting the state of the mux

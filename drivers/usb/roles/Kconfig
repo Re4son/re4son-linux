@@ -2,7 +2,7 @@ if USB_ROLE_SWITCH
 
 config USB_ROLES_INTEL_XHCI
 	tristate "Intel XHCI USB Role Switch"
-	depends on ACPI && X86 && EXTCON
+	depends on ACPI && X86
 	help
 	  Driver for the internal USB role switch for switching the USB data
 	  lines between the xHCI host controller and the dwc3 gadget controller

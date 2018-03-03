@@ -7,8 +7,10 @@
  *         Hans de Goede <hdegoede@redhat.com>
  */
 
-#include <linux/device.h>
 #include <linux/connection.h>
+#include <linux/device.h>
+#include <linux/list.h>
+#include <linux/mutex.h>
 #include <linux/usb/typec_mux.h>
 
 static DEFINE_MUTEX(switch_lock);
@@ -26,7 +28,7 @@ static void *typec_switch_match(struct devcon *con, int ep, void *data)
 
 	/*
 	 * We only get called if a connection was found, tell the caller to
-	 * wait for the switch to show-up.
+	 * wait for the switch to show up.
 	 */
 	return ERR_PTR(-EPROBE_DEFER);
 }
@@ -113,7 +115,7 @@ static void *typec_mux_match(struct devcon *con, int ep, void *data)
 
 	/*
 	 * We only get called if a connection was found, tell the caller to
-	 * wait for the switch to show-up.
+	 * wait for the switch to show up.
 	 */
 	return ERR_PTR(-EPROBE_DEFER);
 }

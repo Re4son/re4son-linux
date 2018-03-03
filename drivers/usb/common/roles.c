@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-/**
+/*
  * USB Role Switch Support
  *
  * Copyright (C) 2018 Intel Corporation
@@ -43,7 +43,7 @@ int usb_role_switch_set_role(struct usb_role_switch *sw, enum usb_role role)
 {
 	int ret;
 
-	if (!sw || IS_ERR(sw))
+	if (IS_ERR_OR_NULL(sw))
 		return 0;
 
 	mutex_lock(&sw->lock);
@@ -171,10 +171,10 @@ static ssize_t role_store(struct device *dev, struct device_attribute *attr,
 	}
 
 	ret = usb_role_switch_set_role(sw, ret);
-	if (!ret)
-		ret = size;
+	if (ret)
+		return ret;
 
-	return ret;
+	return size;
 }
 static DEVICE_ATTR_RW(role);
 
@@ -281,7 +281,7 @@ EXPORT_SYMBOL_GPL(usb_role_switch_register);
  */
 void usb_role_switch_unregister(struct usb_role_switch *sw)
 {
-	if (sw && !IS_ERR(sw))
+	if (!IS_ERR_OR_NULL(sw))
 		device_unregister(&sw->dev);
 }
 EXPORT_SYMBOL_GPL(usb_role_switch_unregister);
