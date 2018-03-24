@@ -162,7 +162,7 @@ static int intel_xhci_usb_probe(struct platform_device *pdev)
 	return 0;
 }
 
-int intel_xhci_usb_remove(struct platform_device *pdev)
+static int intel_xhci_usb_remove(struct platform_device *pdev)
 {
 	struct intel_xhci_usb_data *data = platform_get_drvdata(pdev);
 

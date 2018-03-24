@@ -7,7 +7,6 @@
  *         Hans de Goede <hdegoede@redhat.com>
  */
 
-#include <linux/connection.h>
 #include <linux/usb/role.h>
 #include <linux/device.h>
 #include <linux/module.h>
@@ -90,7 +89,8 @@ static int __switch_match(struct device *dev, const void *name)
 	return !strcmp((const char *)name, dev_name(dev));
 }
 
-static void *usb_role_switch_match(struct devcon *con, int ep, void *data)
+static void *usb_role_switch_match(struct device_connection *con, int ep,
+				   void *data)
 {
 	struct device *dev;
 
@@ -109,8 +109,8 @@ static void *usb_role_switch_match(struct devcon *con, int ep, void *data)
  */
 struct usb_role_switch *usb_role_switch_get(struct device *dev)
 {
-	return __device_find_connection(dev, "usb-role-switch", NULL,
-					usb_role_switch_match);
+	return device_connection_find_match(dev, "usb-role-switch", NULL,
+					    usb_role_switch_match);
 }
 EXPORT_SYMBOL_GPL(usb_role_switch_get);
 

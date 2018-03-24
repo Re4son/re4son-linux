@@ -221,14 +221,14 @@ static const struct attribute_group soc_dapm_dev_group = {
 	.is_visible = soc_dev_attr_is_visible,
 };
 
-static const struct attribute_group soc_dev_roup = {
+static const struct attribute_group soc_dev_group = {
 	.attrs = soc_dev_attrs,
 	.is_visible = soc_dev_attr_is_visible,
 };
 
 static const struct attribute_group *soc_dev_attr_groups[] = {
 	&soc_dapm_dev_group,
-	&soc_dev_roup,
+	&soc_dev_group,
 	NULL
 };
 
@@ -3420,7 +3420,6 @@ int snd_soc_add_component(struct device *dev,
 err_cleanup:
 	snd_soc_component_cleanup(component);
 err_free:
-	kfree(component);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(snd_soc_add_component);
@@ -3432,7 +3431,7 @@ int snd_soc_register_component(struct device *dev,
 {
 	struct snd_soc_component *component;
 
-	component = kzalloc(sizeof(*component), GFP_KERNEL);
+	component = devm_kzalloc(dev, sizeof(*component), GFP_KERNEL);
 	if (!component)
 		return -ENOMEM;
 
@@ -3467,7 +3466,6 @@ static int __snd_soc_unregister_component(struct device *dev)
 
 	if (found) {
 		snd_soc_component_cleanup(component);
-		kfree(component);
 	}
 
 	return found;
@@ -4359,6 +4357,26 @@ int snd_soc_of_get_dai_name(struct device_node *of_node,
 EXPORT_SYMBOL_GPL(snd_soc_of_get_dai_name);
 
 /*
+ * snd_soc_of_put_dai_link_codecs - Dereference device nodes in the codecs array
+ * @dai_link: DAI link
+ *
+ * Dereference device nodes acquired by snd_soc_of_get_dai_link_codecs().
+ */
+void snd_soc_of_put_dai_link_codecs(struct snd_soc_dai_link *dai_link)
+{
+	struct snd_soc_dai_link_component *component = dai_link->codecs;
+	int index;
+
+	for (index = 0; index < dai_link->num_codecs; index++, component++) {
+		if (!component->of_node)
+			break;
+		of_node_put(component->of_node);
+		component->of_node = NULL;
+	}
+}
+EXPORT_SYMBOL_GPL(snd_soc_of_put_dai_link_codecs);
+
+/*
  * snd_soc_of_get_dai_link_codecs - Parse a list of CODECs in the devicetree
  * @dev: Card device
  * @of_node: Device node
@@ -4367,7 +4385,8 @@ EXPORT_SYMBOL_GPL(snd_soc_of_get_dai_name);
  * Builds an array of CODEC DAI components from the DAI link property
  * 'sound-dai'.
  * The array is set in the DAI link and the number of DAIs is set accordingly.
- * The device nodes in the array (of_node) must be dereferenced by the caller.
+ * The device nodes in the array (of_node) must be dereferenced by calling
+ * snd_soc_of_put_dai_link_codecs() on @dai_link.
  *
  * Returns 0 for success
  */
@@ -4415,14 +4434,7 @@ int snd_soc_of_get_dai_link_codecs(struct device *dev,
 	}
 	return 0;
 err:
-	for (index = 0, component = dai_link->codecs;
-	     index < dai_link->num_codecs;
-	     index++, component++) {
-		if (!component->of_node)
-			break;
-		of_node_put(component->of_node);
-		component->of_node = NULL;
-	}
+	snd_soc_of_put_dai_link_codecs(dai_link);
 	dai_link->codecs = NULL;
 	dai_link->num_codecs = 0;
 	return ret;

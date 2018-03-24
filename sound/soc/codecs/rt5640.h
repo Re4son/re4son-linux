@@ -14,7 +14,7 @@
 
 #include <linux/clk.h>
 #include <linux/workqueue.h>
-#include <sound/rt5640.h>
+#include <dt-bindings/sound/rt5640.h>
 
 /* Info */
 #define RT5640_RESET				0x00
@@ -2119,16 +2119,12 @@ enum {
 	RT5640_AD_MONO_R_FILTER = (0x1 << 5),
 };
 
-struct rt5640_jack_data {
-	int pin;		/* RT5640_JD_MASK value */
-};
-
 struct rt5640_priv {
 	struct snd_soc_component *component;
-	struct rt5640_platform_data pdata;
 	struct regmap *regmap;
 	struct clk *mclk;
 
+	int ldo1_en; /* GPIO for LDO1_EN */
 	int irq;
 	int sysclk;
 	int sysclk_src;
@@ -2143,10 +2139,19 @@ struct rt5640_priv {
 	bool hp_mute;
 	bool asrc_en;
 
-	/* Jack detect data */
+	/* Jack and button detect data */
+	bool ovcd_irq_enabled;
+	bool pressed;
+	bool press_reported;
+	int press_count;
+	int release_count;
+	int poll_count;
+	struct delayed_work bp_work;
 	struct work_struct jack_work;
 	struct snd_soc_jack *jack;
-	const struct rt5640_jack_data *jack_data;
+	unsigned int jd_src;
+	unsigned int ovcd_th;
+	unsigned int ovcd_sf;
 };
 
 int rt5640_dmic_enable(struct snd_soc_component *component,

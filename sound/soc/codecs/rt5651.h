@@ -12,7 +12,7 @@
 #ifndef __RT5651_H__
 #define __RT5651_H__
 
-#include <sound/rt5651.h>
+#include <dt-bindings/sound/rt5651.h>
 
 /* Info */
 #define RT5651_RESET				0x00
@@ -2073,7 +2073,9 @@ struct rt5651_priv {
 	struct regmap *regmap;
 	struct snd_soc_jack *hp_jack;
 	struct work_struct jack_detect_work;
-	enum rt5651_jd_src jd_src;
+	unsigned int jd_src;
+	unsigned int ovcd_th;
+	unsigned int ovcd_sf;
 
 	int irq;
 	int sysclk;
@@ -2089,7 +2091,5 @@ struct rt5651_priv {
 	int dmic_en;
 	bool hp_mute;
 };
-
-void rt5651_apply_properties(struct snd_soc_component *component);
 
 #endif /* __RT5651_H__ */

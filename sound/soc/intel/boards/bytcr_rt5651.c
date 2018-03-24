@@ -18,6 +18,7 @@
  */
 
 #include <linux/init.h>
+#include <linux/i2c.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/property.h>
@@ -106,7 +107,7 @@ static void log_quirks(struct device *dev)
 	if (BYT_RT5651_JDSRC(byt_rt5651_quirk)) {
 		dev_info(dev, "quirk realtek,jack-detect-source %ld\n",
 			 BYT_RT5651_JDSRC(byt_rt5651_quirk));
-		dev_info(dev, "quirk realtek,over-current-threshold %ld\n",
+		dev_info(dev, "quirk realtek,over-current-threshold-microamp %ld\n",
 			 BYT_RT5651_OVCD_TH(byt_rt5651_quirk) * 100);
 		dev_info(dev, "quirk realtek,over-current-scale-factor %ld\n",
 			 BYT_RT5651_OVCD_SF(byt_rt5651_quirk));
@@ -413,14 +414,45 @@ static const struct dmi_system_id byt_rt5651_quirk_table[] = {
 	{}
 };
 
+/*
+ * Note this MUST be called before snd_soc_register_card(), so that the props
+ * are in place before the codec component driver's probe function parses them.
+ */
+static int byt_rt5651_add_codec_device_props(const char *i2c_dev_name)
+{
+	struct property_entry props[MAX_NO_PROPS] = {};
+	struct device *i2c_dev;
+	int ret, cnt = 0;
+
+	i2c_dev = bus_find_device_by_name(&i2c_bus_type, NULL, i2c_dev_name);
+	if (!i2c_dev)
+		return -EPROBE_DEFER;
+
+	props[cnt++] = PROPERTY_ENTRY_U32("realtek,jack-detect-source",
+				BYT_RT5651_JDSRC(byt_rt5651_quirk));
+
+	props[cnt++] = PROPERTY_ENTRY_U32("realtek,over-current-threshold-microamp",
+				BYT_RT5651_OVCD_TH(byt_rt5651_quirk) * 100);
+
+	props[cnt++] = PROPERTY_ENTRY_U32("realtek,over-current-scale-factor",
+				BYT_RT5651_OVCD_SF(byt_rt5651_quirk));
+
+	if (byt_rt5651_quirk & BYT_RT5651_DMIC_EN)
+		props[cnt++] = PROPERTY_ENTRY_BOOL("realtek,dmic-en");
+
+	ret = device_add_properties(i2c_dev, props);
+	put_device(i2c_dev);
+
+	return ret;
+}
+
 static int byt_rt5651_init(struct snd_soc_pcm_runtime *runtime)
 {
 	struct snd_soc_card *card = runtime->card;
 	struct snd_soc_component *codec = runtime->codec_dai->component;
 	struct byt_rt5651_private *priv = snd_soc_card_get_drvdata(card);
-	struct property_entry props[MAX_NO_PROPS] = {};
 	const struct snd_soc_dapm_route *custom_map;
-	int num_routes, cnt = 0;
+	int num_routes;
 	int ret;
 
 	card->dapm.idle_bias_off = true;
@@ -509,24 +541,6 @@ static int byt_rt5651_init(struct snd_soc_pcm_runtime *runtime)
 		if (ret)
 			dev_err(card->dev, "unable to set MCLK rate\n");
 	}
-
-	props[cnt++] = PROPERTY_ENTRY_U32("realtek,jack-detect-source",
-				BYT_RT5651_JDSRC(byt_rt5651_quirk));
-
-	props[cnt++] = PROPERTY_ENTRY_U32("realtek,over-current-threshold",
-				BYT_RT5651_OVCD_TH(byt_rt5651_quirk) * 100);
-
-	props[cnt++] = PROPERTY_ENTRY_U32("realtek,over-current-scale-factor",
-				BYT_RT5651_OVCD_SF(byt_rt5651_quirk));
-
-	if (byt_rt5651_quirk & BYT_RT5651_DMIC_EN)
-		props[cnt++] = PROPERTY_ENTRY_BOOL("realtek,dmic-en");
-
-	ret = device_add_properties(codec->dev, props);
-	if (ret)
-		return ret;
-
-	rt5651_apply_properties(codec);
 
 	if (BYT_RT5651_JDSRC(byt_rt5651_quirk)) {
 		ret = snd_soc_card_jack_new(runtime->card, "Headset",
@@ -737,12 +751,13 @@ static int snd_byt_rt5651_mc_probe(struct platform_device *pdev)
 
 	/* fixup codec name based on HID */
 	i2c_name = acpi_dev_get_first_match_name(mach->id, NULL, -1);
-	if (i2c_name) {
-		snprintf(byt_rt5651_codec_name, sizeof(byt_rt5651_codec_name),
-			"%s%s", "i2c-", i2c_name);
-
-		byt_rt5651_dais[dai_index].codec_name = byt_rt5651_codec_name;
+	if (!i2c_name) {
+		dev_err(&pdev->dev, "Error cannot find '%s' dev\n", mach->id);
+		return -ENODEV;
 	}
+	snprintf(byt_rt5651_codec_name, sizeof(byt_rt5651_codec_name),
+		"%s%s", "i2c-", i2c_name);
+	byt_rt5651_dais[dai_index].codec_name = byt_rt5651_codec_name;
 
 	/*
 	 * swap SSP0 if bytcr is detected
@@ -805,6 +820,12 @@ static int snd_byt_rt5651_mc_probe(struct platform_device *pdev)
 
 	/* check quirks before creating card */
 	dmi_check_system(byt_rt5651_quirk_table);
+
+	/* Must be called before register_card, also see declaration comment. */
+	ret_val = byt_rt5651_add_codec_device_props(byt_rt5651_codec_name);
+	if (ret_val)
+		return ret_val;
+
 	log_quirks(&pdev->dev);
 
 	if ((byt_rt5651_quirk & BYT_RT5651_SSP2_AIF2) ||

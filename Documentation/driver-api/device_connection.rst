@@ -40,4 +40,4 @@ API
 ---
 
 .. kernel-doc:: drivers/base/devcon.c
-   : functions: __device_find_connection device_find_connection add_device_connection remove_device_connection
+   : functions: device_connection_find_match device_connection_find device_connection_add device_connection_remove

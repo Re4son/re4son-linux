@@ -7,7 +7,6 @@
  *         Hans de Goede <hdegoede@redhat.com>
  */
 
-#include <linux/connection.h>
 #include <linux/device.h>
 #include <linux/list.h>
 #include <linux/mutex.h>
@@ -18,7 +17,8 @@ static DEFINE_MUTEX(mux_lock);
 static LIST_HEAD(switch_list);
 static LIST_HEAD(mux_list);
 
-static void *typec_switch_match(struct devcon *con, int ep, void *data)
+static void *typec_switch_match(struct device_connection *con, int ep,
+				void *data)
 {
 	struct typec_switch *sw;
 
@@ -47,8 +47,8 @@ struct typec_switch *typec_switch_get(struct device *dev)
 	struct typec_switch *sw;
 
 	mutex_lock(&switch_lock);
-	sw = __device_find_connection(dev, "typec-switch", NULL,
-				      typec_switch_match);
+	sw = device_connection_find_match(dev, "typec-switch", NULL,
+					  typec_switch_match);
 	if (!IS_ERR_OR_NULL(sw))
 		get_device(sw->dev);
 	mutex_unlock(&switch_lock);
@@ -105,7 +105,7 @@ EXPORT_SYMBOL_GPL(typec_switch_unregister);
 
 /* ------------------------------------------------------------------------- */
 
-static void *typec_mux_match(struct devcon *con, int ep, void *data)
+static void *typec_mux_match(struct device_connection *con, int ep, void *data)
 {
 	struct typec_mux *mux;
 
@@ -134,7 +134,8 @@ struct typec_mux *typec_mux_get(struct device *dev)
 	struct typec_mux *mux;
 
 	mutex_lock(&mux_lock);
-	mux = __device_find_connection(dev, "typec-mux", NULL, typec_mux_match);
+	mux = device_connection_find_match(dev, "typec-mux", NULL,
+					   typec_mux_match);
 	if (!IS_ERR_OR_NULL(mux))
 		get_device(mux->dev);
 	mutex_unlock(&mux_lock);

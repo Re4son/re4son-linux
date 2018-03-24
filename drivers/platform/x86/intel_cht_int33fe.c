@@ -21,7 +21,6 @@
  */
 
 #include <linux/acpi.h>
-#include <linux/connection.h>
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
@@ -35,7 +34,7 @@ struct cht_int33fe_data {
 	struct i2c_client *fusb302;
 	struct i2c_client *pi3usb30532;
 	/* Contain a list-head must be per device */
-	struct devcon connections[3];
+	struct device_connection connections[3];
 };
 
 /*
@@ -185,9 +184,9 @@ static int cht_int33fe_probe(struct i2c_client *client)
 	data->connections[2].endpoint[1] = "intel_xhci_usb_sw-role-switch";
 	data->connections[2].id = "usb-role-switch";
 
-	add_device_connection(&data->connections[0]);
-	add_device_connection(&data->connections[1]);
-	add_device_connection(&data->connections[2]);
+	device_connection_add(&data->connections[0]);
+	device_connection_add(&data->connections[1]);
+	device_connection_add(&data->connections[2]);
 
 	memset(&board_info, 0, sizeof(board_info));
 	strlcpy(board_info.type, "typec_fusb302", I2C_NAME_SIZE);
@@ -218,9 +217,9 @@ out_unregister_max17047:
 	if (data->max17047)
 		i2c_unregister_device(data->max17047);
 
-	remove_device_connection(&data->connections[2]);
-	remove_device_connection(&data->connections[1]);
-	remove_device_connection(&data->connections[0]);
+	device_connection_remove(&data->connections[2]);
+	device_connection_remove(&data->connections[1]);
+	device_connection_remove(&data->connections[0]);
 
 	return -EPROBE_DEFER; /* Wait for the i2c-adapter to load */
 }
@@ -234,9 +233,9 @@ static int cht_int33fe_remove(struct i2c_client *i2c)
 	if (data->max17047)
 		i2c_unregister_device(data->max17047);
 
-	remove_device_connection(&data->connections[2]);
-	remove_device_connection(&data->connections[1]);
-	remove_device_connection(&data->connections[0]);
+	device_connection_remove(&data->connections[2]);
+	device_connection_remove(&data->connections[1]);
+	device_connection_remove(&data->connections[0]);
 
 	return 0;
 }

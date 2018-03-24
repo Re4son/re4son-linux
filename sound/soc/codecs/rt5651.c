@@ -1700,48 +1700,7 @@ static int rt5651_set_jack(struct snd_soc_component *component,
 			   struct snd_soc_jack *hp_jack, void *data)
 {
 	struct rt5651_priv *rt5651 = snd_soc_component_get_drvdata(component);
-	/*
-	 * Testing on various boards has shown that good defaults for the OVCD
-	 * threshold and scale-factor are 2000µA and 0.75. For an effective
-	 * limit of 1500µA, this seems to be more reliable then 1500µA and 1.0.
-	 */
-	unsigned int ovcd_th = RT5651_MIC1_OVTH_2000UA;
-	unsigned int ovcd_sf = RT5651_MIC_OVCD_SF_0P75;
 	int ret;
-	u32 val;
-
-	if (device_property_read_u32(component->dev,
-				     "realtek,jack-detect-source", &val) == 0)
-		rt5651->jd_src = val;
-
-	if (device_property_read_u32(component->dev,
-			"realtek,over-current-threshold", &val) == 0) {
-		switch (val) {
-		case 600:
-			ovcd_th = RT5651_MIC1_OVTH_600UA;
-			break;
-		case 1500:
-			ovcd_th = RT5651_MIC1_OVTH_1500UA;
-			break;
-		case 2000:
-			ovcd_th = RT5651_MIC1_OVTH_2000UA;
-			break;
-		default:
-			dev_err(component->dev, "Invalid over-current-threshold value: %d\n",
-				val);
-			return -EINVAL;
-		}
-	}
-
-	if (device_property_read_u32(component->dev,
-			"realtek,over-current-scale-factor", &val) == 0) {
-		if (val > RT5651_OVCD_SF_1P5) {
-			dev_err(component->dev, "Invalid over-current-scale-factor value: %d\n",
-				val);
-			return -EINVAL;
-		}
-		ovcd_sf = val << RT5651_MIC_OVCD_SF_SFT;
-	}
 
 	if (!rt5651->irq)
 		return -EINVAL;
@@ -1783,7 +1742,7 @@ static int rt5651_set_jack(struct snd_soc_component *component,
 
 	/* Set OVCD threshold current and scale-factor */
 	snd_soc_component_write(component, RT5651_PR_BASE + RT5651_BIAS_CUR4,
-				0xa800 | ovcd_sf);
+				0xa800 | rt5651->ovcd_sf);
 
 	snd_soc_component_update_bits(component, RT5651_MICBIAS,
 				      RT5651_MIC1_OVCD_MASK |
@@ -1791,7 +1750,7 @@ static int rt5651_set_jack(struct snd_soc_component *component,
 				      RT5651_PWR_CLK12M_MASK |
 				      RT5651_PWR_MB_MASK,
 				      RT5651_MIC1_OVCD_EN |
-				      ovcd_th |
+				      rt5651->ovcd_th |
 				      RT5651_PWR_MB_PU |
 				      RT5651_PWR_CLK12M_PU);
 
@@ -1825,8 +1784,18 @@ static int rt5651_set_jack(struct snd_soc_component *component,
 	return 0;
 }
 
-void rt5651_apply_properties(struct snd_soc_component *component)
+/*
+ * Note on some platforms the platform code may need to add device-properties,
+ * rather then relying only on properties set by the firmware. Therefor the
+ * property parsing MUST be done from the component driver's probe function,
+ * rather then from the i2c driver's probe function, so that the platform-code
+ * can attach extra properties before calling snd_soc_register_card().
+ */
+static void rt5651_apply_properties(struct snd_soc_component *component)
 {
+	struct rt5651_priv *rt5651 = snd_soc_component_get_drvdata(component);
+	u32 val;
+
 	if (device_property_read_bool(component->dev, "realtek,in2-differential"))
 		snd_soc_component_update_bits(component, RT5651_IN1_IN2,
 				RT5651_IN_DF2, RT5651_IN_DF2);
@@ -1834,8 +1803,46 @@ void rt5651_apply_properties(struct snd_soc_component *component)
 	if (device_property_read_bool(component->dev, "realtek,dmic-en"))
 		snd_soc_component_update_bits(component, RT5651_GPIO_CTRL1,
 				RT5651_GP2_PIN_MASK, RT5651_GP2_PIN_DMIC1_SCL);
+
+	if (device_property_read_u32(component->dev,
+				     "realtek,jack-detect-source", &val) == 0)
+		rt5651->jd_src = val;
+
+	/*
+	 * Testing on various boards has shown that good defaults for the OVCD
+	 * threshold and scale-factor are 2000µA and 0.75. For an effective
+	 * limit of 1500µA, this seems to be more reliable then 1500µA and 1.0.
+	 */
+	rt5651->ovcd_th = RT5651_MIC1_OVTH_2000UA;
+	rt5651->ovcd_sf = RT5651_MIC_OVCD_SF_0P75;
+
+	if (device_property_read_u32(component->dev,
+			"realtek,over-current-threshold-microamp", &val) == 0) {
+		switch (val) {
+		case 600:
+			rt5651->ovcd_th = RT5651_MIC1_OVTH_600UA;
+			break;
+		case 1500:
+			rt5651->ovcd_th = RT5651_MIC1_OVTH_1500UA;
+			break;
+		case 2000:
+			rt5651->ovcd_th = RT5651_MIC1_OVTH_2000UA;
+			break;
+		default:
+			dev_warn(component->dev, "Warning: Invalid over-current-threshold-microamp value: %d, defaulting to 2000uA\n",
+				 val);
+		}
+	}
+
+	if (device_property_read_u32(component->dev,
+			"realtek,over-current-scale-factor", &val) == 0) {
+		if (val <= RT5651_OVCD_SF_1P5)
+			rt5651->ovcd_sf = val << RT5651_MIC_OVCD_SF_SFT;
+		else
+			dev_warn(component->dev, "Warning: Invalid over-current-scale-factor value: %d, defaulting to 0.75\n",
+				 val);
+	}
 }
-EXPORT_SYMBOL_GPL(rt5651_apply_properties);
 
 static int rt5651_probe(struct snd_soc_component *component)
 {
@@ -1985,6 +1992,10 @@ static const struct i2c_device_id rt5651_i2c_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, rt5651_i2c_id);
 
+/*
+ * Note this function MUST not look at device-properties, see the comment
+ * above rt5651_apply_properties().
+ */
 static int rt5651_i2c_probe(struct i2c_client *i2c,
 		    const struct i2c_device_id *id)
 {

@@ -6,14 +6,13 @@
  * Author: Heikki Krogerus <heikki.krogerus@linux.intel.com>
  */
 
-#include <linux/connection.h>
 #include <linux/device.h>
 
 static DEFINE_MUTEX(devcon_lock);
 static LIST_HEAD(devcon_list);
 
 /**
- * __device_find_connection - Find physical connection to a device
+ * device_connection_find_match - Find physical connection to a device
  * @dev: Device with the connection
  * @con_id: Identifier for the connection
  * @data: Data for the match function
@@ -23,22 +22,22 @@ static LIST_HEAD(devcon_list);
  * device. @match will be used to convert the connection description to data the
  * caller is expecting to be returned.
  */
-void *__device_find_connection(struct device *dev, const char *con_id,
+void *device_connection_find_match(struct device *dev, const char *con_id,
 			       void *data,
-			       void *(*match)(struct devcon *con, int ep,
-					      void *data))
+			       void *(*match)(struct device_connection *con,
+					      int ep, void *data))
 {
 	const char *devname = dev_name(dev);
-	struct devcon *con;
+	struct device_connection *con;
 	void *ret = NULL;
 	int ep;
 
 	if (!match)
 		return NULL;
 
-	rcu_read_lock();
+	mutex_lock(&devcon_lock);
 
-	list_for_each_entry_rcu(con, &devcon_list, list) {
+	list_for_each_entry(con, &devcon_list, list) {
 		ep = match_string(con->endpoint, 2, devname);
 		if (ep < 0)
 			continue;
@@ -51,16 +50,16 @@ void *__device_find_connection(struct device *dev, const char *con_id,
 			break;
 	}
 
-	rcu_read_unlock();
+	mutex_unlock(&devcon_lock);
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(__device_find_connection);
+EXPORT_SYMBOL_GPL(device_connection_find_match);
 
-#include <linux/platform_device.h>
-#include <linux/spi/spi.h>
-#include <linux/i2c.h>
-#include <linux/pci.h>
+extern struct bus_type platform_bus_type;
+extern struct bus_type pci_bus_type;
+extern struct bus_type i2c_bus_type;
+extern struct bus_type spi_bus_type;
 
 static struct bus_type *generic_match_buses[] = {
 	&platform_bus_type,
@@ -77,7 +76,7 @@ static struct bus_type *generic_match_buses[] = {
 };
 
 /* This tries to find the device from the most common bus types by name. */
-static void *generic_match(struct devcon *con, int ep, void *data)
+static void *generic_match(struct device_connection *con, int ep, void *data)
 {
 	struct bus_type *bus;
 	struct device *dev;
@@ -96,7 +95,7 @@ static void *generic_match(struct devcon *con, int ep, void *data)
 }
 
 /**
- * device_find_connection - Find two devices connected together
+ * device_connection_find - Find two devices connected together
  * @dev: Device with the connection
  * @con_id: Identifier for the connection
  *
@@ -106,34 +105,32 @@ static void *generic_match(struct devcon *con, int ep, void *data)
  * NULL if no matching connection was found, or ERR_PTR(-EPROBE_DEFER) when a
  * connection was found but the other device has not been enumerated yet.
  */
-struct device *device_find_connection(struct device *dev, const char *con_id)
+struct device *device_connection_find(struct device *dev, const char *con_id)
 {
-	return __device_find_connection(dev, con_id, NULL, generic_match);
+	return device_connection_find_match(dev, con_id, NULL, generic_match);
 }
-EXPORT_SYMBOL_GPL(device_find_connection);
+EXPORT_SYMBOL_GPL(device_connection_find);
 
 /**
- * add_device_connection - Register a collection of connection descriptions
- * @con: Collection of connection descriptions to be registered
+ * device_connection_add - Register a connection description
+ * @con: The connection description to be registered
  */
-void add_device_connection(struct devcon *con)
+void device_connection_add(struct device_connection *con)
 {
 	mutex_lock(&devcon_lock);
-	list_add_tail_rcu(&con->list, &devcon_list);
+	list_add_tail(&con->list, &devcon_list);
 	mutex_unlock(&devcon_lock);
 }
-EXPORT_SYMBOL_GPL(add_device_connection);
+EXPORT_SYMBOL_GPL(device_connection_add);
 
 /**
- * remove_device_connections - Unregister collection of connection descriptions
- * @con: Collection of connection descriptions to be unregistered
+ * device_connections_remove - Unregister connection description
+ * @con: The connection description to be unregistered
  */
-void remove_device_connection(struct devcon *con)
+void device_connection_remove(struct device_connection *con)
 {
 	mutex_lock(&devcon_lock);
-	list_del_rcu(&con->list);
+	list_del(&con->list);
 	mutex_unlock(&devcon_lock);
-	/* The caller may free the devcon struct immediately afterwards. */
-	synchronize_rcu();
 }
-EXPORT_SYMBOL_GPL(remove_device_connection);
+EXPORT_SYMBOL_GPL(device_connection_remove);

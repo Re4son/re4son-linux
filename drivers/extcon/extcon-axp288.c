@@ -16,7 +16,6 @@
  */
 
 #include <linux/acpi.h>
-#include <linux/connection.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/io.h>
@@ -446,7 +445,7 @@ static struct platform_driver axp288_extcon_driver = {
 	},
 };
 
-static struct devcon axp288_extcon_role_sw_conn = {
+static struct device_connection axp288_extcon_role_sw_conn = {
 	.endpoint[0] = "axp288_extcon",
 	.endpoint[1] = "intel_xhci_usb_sw-role-switch",
 	.id = "usb-role-switch",
@@ -455,7 +454,7 @@ static struct devcon axp288_extcon_role_sw_conn = {
 static int __init axp288_extcon_init(void)
 {
 	if (x86_match_cpu(cherry_trail_cpu_ids))
-		add_device_connection(&axp288_extcon_role_sw_conn);
+		device_connection_add(&axp288_extcon_role_sw_conn);
 
 	return platform_driver_register(&axp288_extcon_driver);
 }
@@ -464,7 +463,7 @@ module_init(axp288_extcon_init);
 static void __exit axp288_extcon_exit(void)
 {
 	if (x86_match_cpu(cherry_trail_cpu_ids))
-		remove_device_connection(&axp288_extcon_role_sw_conn);
+		device_connection_remove(&axp288_extcon_role_sw_conn);
 
 	platform_driver_unregister(&axp288_extcon_driver);
 }

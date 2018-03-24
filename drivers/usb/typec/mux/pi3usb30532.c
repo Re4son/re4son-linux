@@ -65,7 +65,7 @@ static int pi3usb30532_sw_set(struct typec_switch *sw,
 	case TYPEC_ORIENTATION_REVERSE:
 		new_conf |= PI3USB30532_CONF_SWAP;
 		break;
-	};
+	}
 
 	ret = pi3usb30532_set_conf(pi, new_conf);
 	mutex_unlock(&pi->lock);
@@ -98,7 +98,7 @@ static int pi3usb30532_mux_set(struct typec_mux *mux, int state)
 		new_conf = (new_conf & PI3USB30532_CONF_SWAP) |
 			   PI3USB30532_CONF_USB3_AND_2LANE_DP;
 		break;
-	};
+	}
 
 	ret = pi3usb30532_set_conf(pi, new_conf);
 	mutex_unlock(&pi->lock);
