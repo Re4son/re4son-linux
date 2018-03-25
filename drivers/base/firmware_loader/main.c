@@ -33,6 +33,8 @@
 #include <linux/syscore_ops.h>
 #include <linux/reboot.h>
 #include <linux/security.h>
+#include <linux/efi_embedded_fw.h>
+#include <linux/property.h>
 
 #include <generated/utsrelease.h>
 
@@ -340,6 +342,28 @@ fw_get_filesystem_firmware(struct device *device, struct fw_priv *fw_priv)
 	return rc;
 }
 
+#ifdef CONFIG_EFI_EMBEDDED_FIRMWARE
+static int
+fw_get_efi_embedded_fw(struct device *dev, struct fw_priv *fw_priv, int ret)
+{
+	size_t size;
+	int rc;
+
+	rc = efi_get_embedded_fw(fw_priv->fw_name, &fw_priv->data, &size,
+				 fw_priv->data ? fw_priv->allocated_size : 0);
+	if (rc == 0) {
+		dev_dbg(dev, "using efi-embedded fw %s\n", fw_priv->fw_name);
+		fw_priv->size = size;
+		fw_state_done(fw_priv);
+		ret = 0;
+	} else {
+		dev_warn(dev, "Firmware %s not in EFI\n", fw_priv->fw_name);
+	}
+
+	return ret;
+}
+#endif
+
 /* firmware holds the ownership of pages */
 static void firmware_free_data(const struct firmware *fw)
 {
@@ -576,6 +600,15 @@ _request_firmware(const struct firmware **firmware_p, const char *name,
 		goto out;
 
 	ret = fw_get_filesystem_firmware(device, fw->priv);
+#ifdef CONFIG_EFI_EMBEDDED_FIRMWARE
+	if (ret && device &&
+	    device_property_read_bool(device, "efi-embedded-firmware")) {
+		ret = fw_get_efi_embedded_fw(device, fw->priv, ret);
+		if (ret == 0)
+			ret = assign_fw(fw, device, opt_flags | FW_OPT_NOCACHE);
+		goto out;
+	}
+#endif
 	if (ret) {
 		if (!(opt_flags & FW_OPT_NO_WARN))
 			dev_warn(device,
