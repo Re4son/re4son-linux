@@ -26,6 +26,41 @@
 #define DUMMY_ROWS	CONFIG_DUMMY_CONSOLE_ROWS
 #endif
 
+#ifdef CONFIG_FRAMEBUFFER_CONSOLE_DEFERRED_TAKEOVER
+/* These are both protected by the console_lock */
+static RAW_NOTIFIER_HEAD(dummycon_output_nh);
+static bool dummycon_putc_called;
+
+void dummycon_register_output_notifier(struct notifier_block *nb)
+{
+	raw_notifier_chain_register(&dummycon_output_nh, nb);
+
+	if (dummycon_putc_called)
+		nb->notifier_call(nb, 0, NULL);
+}
+
+void dummycon_unregister_output_notifier(struct notifier_block *nb)
+{
+	raw_notifier_chain_unregister(&dummycon_output_nh, nb);
+}
+
+static void dummycon_putc(struct vc_data *vc, int c, int ypos, int xpos)
+{
+	raw_notifier_call_chain(&dummycon_output_nh, 0, NULL);
+	dummycon_putc_called = true;
+}
+
+static void dummycon_putcs(struct vc_data *vc, const unsigned short *s,
+			   int count, int ypos, int xpos)
+{
+	raw_notifier_call_chain(&dummycon_output_nh, 0, NULL);
+	dummycon_putc_called = true;
+}
+#else
+#define dummycon_putc	(void *)dummycon_dummy
+#define dummycon_putcs	(void *)dummycon_dummy
+#endif
+
 static const char *dummycon_startup(void)
 {
     return "dummy device";
@@ -60,8 +95,8 @@ const struct consw dummy_con = {
     .con_init =		dummycon_init,
     .con_deinit =	DUMMY,
     .con_clear =	DUMMY,
-    .con_putc =		DUMMY,
-    .con_putcs =	DUMMY,
+    .con_putc =		dummycon_putc,
+    .con_putcs =	dummycon_putcs,
     .con_cursor =	DUMMY,
     .con_scroll =	DUMMY,
     .con_switch =	DUMMY,
