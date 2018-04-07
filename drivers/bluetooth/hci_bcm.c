@@ -464,7 +464,7 @@ static int bcm_close(struct hci_uart *hu)
 		err = bcm_gpio_set_power(bdev, false);
 		if (err)
 			bt_dev_err(hu->hdev, "Failed to power down");
-		else if (IS_ENABLED(CONFIG_PM) && bdev->irq > 0)
+		else
 			pm_runtime_set_suspended(bdev->dev);
 	}
 	mutex_unlock(&bcm_device_lock);
@@ -809,25 +809,6 @@ static const struct dmi_system_id bcm_broken_irq_dmi_table[] = {
 };
 
 #ifdef CONFIG_ACPI
-/* IRQ polarity of some chipsets are not defined correctly in ACPI table. */
-static const struct dmi_system_id bcm_active_low_irq_dmi_table[] = {
-	{	/* Handle ThinkPad 8 tablets with BCM2E55 chipset ACPI ID */
-		.ident = "Lenovo ThinkPad 8",
-		.matches = {
-			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "LENOVO"),
-			DMI_EXACT_MATCH(DMI_PRODUCT_VERSION, "ThinkPad 8"),
-		},
-	},
-	{
-		.ident = "MINIX Z83-4",
-		.matches = {
-			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "MINIX"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "Z83-4"),
-		},
-	},
-	{ }
-};
-
 static int bcm_resource(struct acpi_resource *ares, void *data)
 {
 	struct bcm_device *dev = data;
@@ -974,7 +955,6 @@ static int bcm_get_resources(struct bcm_device *dev)
 static int bcm_acpi_probe(struct bcm_device *dev)
 {
 	LIST_HEAD(resources);
-	const struct dmi_system_id *dmi_id;
 	const struct acpi_gpio_mapping *gpio_mapping = acpi_bcm_int_last_gpios;
 	struct resource_entry *entry;
 	int ret;
@@ -1021,13 +1001,6 @@ static int bcm_acpi_probe(struct bcm_device *dev)
 		dev->irq_active_low = irq_polarity;
 		dev_warn(dev->dev, "Overwriting IRQ polarity to active %s by module-param\n",
 			 dev->irq_active_low ? "low" : "high");
-	} else {
-		dmi_id = dmi_first_match(bcm_active_low_irq_dmi_table);
-		if (dmi_id) {
-			dev_warn(dev->dev, "%s: Overwriting IRQ polarity to active low",
-				 dmi_id->ident);
-			dev->irq_active_low = true;
-		}
 	}
 
 	return 0;

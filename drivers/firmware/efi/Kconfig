@@ -164,6 +164,12 @@ config RESET_ATTACK_MITIGATION
 	  have been evicted, since otherwise it will trigger even on clean
 	  reboots.
 
+config EFI_EMBEDDED_FIRMWARE
+	# This needs boot-services-code to be kept around till after mm_init()
+	# so make this X86 only for now
+	depends on EFI_STUB && X86
+	bool
+
 endmenu
 
 config UEFI_CPER
