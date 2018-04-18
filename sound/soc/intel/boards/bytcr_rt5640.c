@@ -510,14 +510,19 @@ static int byt_rt5640_add_codec_device_props(const char *i2c_dev_name)
 		break;
 	}
 
-	props[cnt++] = PROPERTY_ENTRY_U32("realtek,jack-detect-source",
-				BYT_RT5640_JDSRC(byt_rt5640_quirk));
+	if (BYT_RT5640_JDSRC(byt_rt5640_quirk)) {
+		props[cnt++] = PROPERTY_ENTRY_U32(
+				    "realtek,jack-detect-source",
+				    BYT_RT5640_JDSRC(byt_rt5640_quirk));
 
-	props[cnt++] = PROPERTY_ENTRY_U32("realtek,over-current-threshold-microamp",
-				BYT_RT5640_OVCD_TH(byt_rt5640_quirk) * 100);
+		props[cnt++] = PROPERTY_ENTRY_U32(
+				    "realtek,over-current-threshold-microamp",
+				    BYT_RT5640_OVCD_TH(byt_rt5640_quirk) * 100);
 
-	props[cnt++] = PROPERTY_ENTRY_U32("realtek,over-current-scale-factor",
-				BYT_RT5640_OVCD_SF(byt_rt5640_quirk));
+		props[cnt++] = PROPERTY_ENTRY_U32(
+				    "realtek,over-current-scale-factor",
+				    BYT_RT5640_OVCD_SF(byt_rt5640_quirk));
+	}
 
 	ret = device_add_properties(i2c_dev, props);
 	put_device(i2c_dev);

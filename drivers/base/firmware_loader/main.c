@@ -342,7 +342,7 @@ fw_get_filesystem_firmware(struct device *device, struct fw_priv *fw_priv)
 	return rc;
 }
 
-#ifdef CONFIG_EFI
+#ifdef CONFIG_EFI_EMBEDDED_FIRMWARE
 static int
 fw_get_efi_embedded_fw(struct device *dev, struct fw_priv *fw_priv, int ret)
 {
@@ -356,6 +356,8 @@ fw_get_efi_embedded_fw(struct device *dev, struct fw_priv *fw_priv, int ret)
 		fw_priv->size = size;
 		fw_state_done(fw_priv);
 		ret = 0;
+	} else {
+		dev_warn(dev, "Firmware %s not in EFI\n", fw_priv->fw_name);
 	}
 
 	return ret;
@@ -599,8 +601,13 @@ _request_firmware(const struct firmware **firmware_p, const char *name,
 
 	ret = fw_get_filesystem_firmware(device, fw->priv);
 #ifdef CONFIG_EFI_EMBEDDED_FIRMWARE
-	if (ret && device_property_read_bool(device, "efi-embedded-firmware"))
+	if (ret && device &&
+	    device_property_read_bool(device, "efi-embedded-firmware")) {
 		ret = fw_get_efi_embedded_fw(device, fw->priv, ret);
+		if (ret == 0)
+			ret = assign_fw(fw, device, opt_flags | FW_OPT_NOCACHE);
+		goto out;
+	}
 #endif
 	if (ret) {
 		if (!(opt_flags & FW_OPT_NO_WARN))

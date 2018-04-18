@@ -97,11 +97,16 @@ static int icn8505_read_xfer(struct i2c_client *client, u16 i2c_addr,
 		buf[i] = (reg_addr >> (reg_addr_width - (i + 1) * 8)) & 0xff;
 
 	ret = i2c_transfer(client->adapter, msg, 2);
-	if (ret < 0 && !silent)
-		dev_err(&client->dev, "Error reading addr %#x reg %#x: %d\n",
-			i2c_addr, reg_addr, ret);
+	if (ret != ARRAY_SIZE(msg)) {
+		if (ret >= 0)
+			ret = -EIO;
+		if (!silent)
+			dev_err(&client->dev, "Error reading addr %#x reg %#x: %d\n",
+				i2c_addr, reg_addr, ret);
+		return ret;
+	}
 
-	return ret;
+	return 0;
 }
 
 static int icn8505_write_xfer(struct i2c_client *client, u16 i2c_addr,
@@ -125,11 +130,16 @@ static int icn8505_write_xfer(struct i2c_client *client, u16 i2c_addr,
 	memcpy(buf + reg_addr_width / 8, data, len);
 
 	ret = i2c_transfer(client->adapter, &msg, 1);
-	if (ret < 0 && !silent)
-		dev_err(&client->dev, "Error writing addr %#x reg %#x: %d\n",
-			i2c_addr, reg_addr, ret);
+	if (ret != 1) {
+		if (ret >= 0)
+			ret = -EIO;
+		if (!silent)
+			dev_err(&client->dev, "Error writing addr %#x reg %#x: %d\n",
+				i2c_addr, reg_addr, ret);
+		return ret;
+	}
 
-	return ret;
+	return 0;
 }
 
 static int icn8505_read_data(struct icn8505_data *icn8505, int reg,
@@ -142,12 +152,12 @@ static int icn8505_read_data(struct icn8505_data *icn8505, int reg,
 static int icn8505_read_reg_silent(struct icn8505_data *icn8505, int reg)
 {
 	u8 buf;
-	int ret;
+	int error;
 
-	ret = icn8505_read_xfer(icn8505->client, icn8505->client->addr, reg,
-				ICN8505_REG_ADDR_WIDTH, &buf, 1, true);
-	if (ret < 0)
-		return ret;
+	error = icn8505_read_xfer(icn8505->client, icn8505->client->addr, reg,
+				  ICN8505_REG_ADDR_WIDTH, &buf, 1, true);
+	if (error)
+		return error;
 
 	return buf;
 }
@@ -185,84 +195,81 @@ static int icn8505_write_prog_reg(struct icn8505_data *icn8505, int reg, u8 val)
  * names for the addresses and/or values.
  */
 static int icn8505_try_fw_upload(struct icn8505_data *icn8505,
-				 const struct firmware *fw, int try)
+				 const struct firmware *fw)
 {
 	struct device *dev = &icn8505->client->dev;
 	size_t offset, count;
+	int error;
 	u8 buf[4];
 	u32 crc;
-	int ret;
 
 	/* Put the controller in programming mode */
-	ret = icn8505_write_prog_reg(icn8505, 0xcc3355, 0x5a);
-	if (ret < 0)
-		return ret;
+	error = icn8505_write_prog_reg(icn8505, 0xcc3355, 0x5a);
+	if (error)
+		return error;
 
 	usleep_range(2000, 5000);
 
-	ret = icn8505_write_prog_reg(icn8505, 0x040400, 0x01);
-	if (ret < 0)
-		return ret;
+	error = icn8505_write_prog_reg(icn8505, 0x040400, 0x01);
+	if (error)
+		return error;
 
 	usleep_range(2000, 5000);
 
-	ret = icn8505_read_prog_data(icn8505, 0x040002, buf, 1);
-	if (ret < 0)
-		return ret;
+	error = icn8505_read_prog_data(icn8505, 0x040002, buf, 1);
+	if (error)
+		return error;
 
 	if (buf[0] != 0x85) {
-		dev_err(dev, "Failed to enter programming mode try %d/%d\n",
-			try, MAX_FW_UPLOAD_TRIES);
+		dev_err(dev, "Failed to enter programming mode\n");
 		return -ENODEV;
 	}
 
 	usleep_range(1000, 5000);
 
 	/* Enable CRC mode */
-	ret = icn8505_write_prog_reg(icn8505, 0x40028, 1);
-	if (ret < 0)
-		return ret;
+	error = icn8505_write_prog_reg(icn8505, 0x40028, 1);
+	if (error)
+		return error;
 
 	/* Send the firmware to SRAM */
 	for (offset = 0; offset < fw->size; offset += count) {
 		count = min_t(size_t, fw->size - offset, 32);
-		ret = icn8505_write_prog_data(icn8505, offset,
+		error = icn8505_write_prog_data(icn8505, offset,
 					      fw->data + offset, count);
-		if (ret < 0)
-			return ret;
+		if (error)
+			return error;
 	}
 
 	/* Disable CRC mode */
-	ret = icn8505_write_prog_reg(icn8505, 0x40028, 0);
-	if (ret < 0)
-		return ret;
+	error = icn8505_write_prog_reg(icn8505, 0x40028, 0);
+	if (error)
+		return error;
 
 	/* Get and check length and CRC */
-	ret = icn8505_read_prog_data(icn8505, 0x40034, buf, 2);
-	if (ret < 0)
-		return ret;
+	error = icn8505_read_prog_data(icn8505, 0x40034, buf, 2);
+	if (error)
+		return error;
 
 	if (get_unaligned_le16(buf) != fw->size) {
-		dev_warn(dev, "Length mismatch after uploading fw try %d/%d\n",
-			 try, MAX_FW_UPLOAD_TRIES);
+		dev_warn(dev, "Length mismatch after uploading fw\n");
 		return -EIO;
 	}
 
-	ret = icn8505_read_prog_data(icn8505, 0x4002c, buf, 4);
-	if (ret < 0)
-		return ret;
+	error = icn8505_read_prog_data(icn8505, 0x4002c, buf, 4);
+	if (error)
+		return error;
 
 	crc = crc32_be(0, fw->data, fw->size);
 	if (get_unaligned_le32(buf) != crc) {
-		dev_warn(dev, "CRC mismatch after uploading fw try %d/%d\n",
-			 try, MAX_FW_UPLOAD_TRIES);
+		dev_warn(dev, "CRC mismatch after uploading fw\n");
 		return -EIO;
 	}
 
 	/* Boot controller from SRAM */
-	ret = icn8505_write_prog_reg(icn8505, 0x40400, 0x03);
-	if (ret < 0)
-		return ret;
+	error = icn8505_write_prog_reg(icn8505, 0x40400, 0x03);
+	if (error)
+		return error;
 
 	usleep_range(2000, 5000);
 	return 0;
@@ -272,17 +279,17 @@ static int icn8505_upload_fw(struct icn8505_data *icn8505)
 {
 	struct device *dev = &icn8505->client->dev;
 	const struct firmware *fw;
-	int i, ret;
+	int i, error;
 
 	/*
 	 * Always load the firmware, even if we don't need it at boot, we
 	 * we may need it at resume. Having loaded it once will make the
 	 * firmware class code cache it at suspend/resume.
 	 */
-	ret = request_firmware(&fw, icn8505->firmware_name, dev);
-	if (ret) {
-		dev_err(dev, "Firmware request error %d\n", ret);
-		return ret;
+	error = request_firmware(&fw, icn8505->firmware_name, dev);
+	if (error) {
+		dev_err(dev, "Firmware request error %d\n", error);
+		return error;
 	}
 
 	/* Check if the controller is not already up and running */
@@ -290,21 +297,21 @@ static int icn8505_upload_fw(struct icn8505_data *icn8505)
 		goto success;
 
 	for (i = 1; i <= MAX_FW_UPLOAD_TRIES; i++) {
-		ret = icn8505_try_fw_upload(icn8505, fw, i);
-		if (ret >= 0)
+		error = icn8505_try_fw_upload(icn8505, fw);
+		if (!error)
 			goto success;
 
+		dev_err(dev, "Failed to upload firmware: %d (attempt %d/%d)\n",
+			error, i, MAX_FW_UPLOAD_TRIES);
 		usleep_range(2000, 5000);
 	}
 
-	dev_err(dev, "Error uploading fw: %d\n", ret);
-
 success:
 	release_firmware(fw);
-	return ret;
+	return error;
 }
 
-static inline bool icn8505_touch_active(u8 event)
+static bool icn8505_touch_active(u8 event)
 {
 	return (event == ICN8505_EVENT_UPDATE1) ||
 	       (event == ICN8505_EVENT_UPDATE2);
@@ -315,17 +322,17 @@ static irqreturn_t icn8505_irq(int irq, void *dev_id)
 	struct icn8505_data *icn8505 = dev_id;
 	struct device *dev = &icn8505->client->dev;
 	struct icn8505_touch_data touch_data;
-	int i, ret;
+	int i, error;
 
-	ret = icn8505_read_data(icn8505, ICN8505_REG_TOUCHDATA,
+	error = icn8505_read_data(icn8505, ICN8505_REG_TOUCHDATA,
 				&touch_data, sizeof(touch_data));
-	if (ret < 0) {
-		dev_err(dev, "Error reading touch data: %d\n", ret);
+	if (error) {
+		dev_err(dev, "Error reading touch data: %d\n", error);
 		return IRQ_HANDLED;
 	}
 
 	if (touch_data.touch_count > ICN8505_MAX_TOUCHES) {
-		dev_warn(dev, "Too much touches %d > %d\n",
+		dev_warn(dev, "Too many touches %d > %d\n",
 			 touch_data.touch_count, ICN8505_MAX_TOUCHES);
 		touch_data.touch_count = ICN8505_MAX_TOUCHES;
 	}
@@ -390,10 +397,10 @@ static int icn8505_probe(struct i2c_client *client)
 	struct icn8505_data *icn8505;
 	struct input_dev *input;
 	__le16 resolution[2];
-	int ret;
+	int error;
 
 	if (!client->irq) {
-		dev_err(dev, "Error no irq specified\n");
+		dev_err(dev, "No irq specified\n");
 		return -EINVAL;
 	}
 
@@ -407,7 +414,6 @@ static int icn8505_probe(struct i2c_client *client)
 
 	input->name = client->name;
 	input->id.bustype = BUS_I2C;
-	input->dev.parent = dev;
 
 	input_set_capability(input, EV_ABS, ABS_MT_POSITION_X);
 	input_set_capability(input, EV_ABS, ABS_MT_POSITION_Y);
@@ -417,19 +423,19 @@ static int icn8505_probe(struct i2c_client *client)
 	icn8505->input = input;
 	input_set_drvdata(input, icn8505);
 
-	ret = icn8505_probe_acpi(icn8505, dev);
-	if (ret)
-		return ret;
+	error = icn8505_probe_acpi(icn8505, dev);
+	if (error)
+		return error;
 
-	ret = icn8505_upload_fw(icn8505);
-	if (ret < 0)
-		return ret;
+	error = icn8505_upload_fw(icn8505);
+	if (error)
+		return error;
 
-	ret = icn8505_read_data(icn8505, ICN8505_REG_CONFIGDATA,
+	error = icn8505_read_data(icn8505, ICN8505_REG_CONFIGDATA,
 				resolution, sizeof(resolution));
-	if (ret < 0) {
-		dev_err(dev, "Error reading resolution: %d\n", ret);
-		return ret;
+	if (error) {
+		dev_err(dev, "Error reading resolution: %d\n", error);
+		return error;
 	}
 
 	input_set_abs_params(input, ABS_MT_POSITION_X, 0,
@@ -444,28 +450,27 @@ static int icn8505_probe(struct i2c_client *client)
 		return -EINVAL;
 	}
 
-	ret = input_mt_init_slots(input, ICN8505_MAX_TOUCHES,
+	error = input_mt_init_slots(input, ICN8505_MAX_TOUCHES,
 				  INPUT_MT_DIRECT | INPUT_MT_DROP_UNUSED);
-	if (ret)
-		return ret;
+	if (error)
+		return error;
 
-	ret = devm_request_threaded_irq(dev, client->irq, NULL, icn8505_irq,
+	error = devm_request_threaded_irq(dev, client->irq, NULL, icn8505_irq,
 					IRQF_ONESHOT, client->name, icn8505);
-	if (ret) {
-		dev_err(dev, "Error requesting irq: %d\n", ret);
-		return ret;
+	if (error) {
+		dev_err(dev, "Error requesting irq: %d\n", error);
+		return error;
 	}
 
-	ret = input_register_device(input);
-	if (ret)
-		return ret;
+	error = input_register_device(input);
+	if (error)
+		return error;
 
 	i2c_set_clientdata(client, icn8505);
 	return 0;
 }
 
-#ifdef CONFIG_PM_SLEEP
-static int icn8505_suspend(struct device *dev)
+static int __maybe_unused icn8505_suspend(struct device *dev)
 {
 	struct icn8505_data *icn8505 = i2c_get_clientdata(to_i2c_client(dev));
 
@@ -474,19 +479,18 @@ static int icn8505_suspend(struct device *dev)
 	return 0;
 }
 
-static int icn8505_resume(struct device *dev)
+static int __maybe_unused icn8505_resume(struct device *dev)
 {
 	struct icn8505_data *icn8505 = i2c_get_clientdata(to_i2c_client(dev));
-	int ret;
+	int error;
 
-	ret = icn8505_upload_fw(icn8505);
-	if (ret < 0)
-		return ret;
+	error = icn8505_upload_fw(icn8505);
+	if (error)
+		return error;
 
 	enable_irq(icn8505->client->irq);
 	return 0;
 }
-#endif
 
 static SIMPLE_DEV_PM_OPS(icn8505_pm_ops, icn8505_suspend, icn8505_resume);
 

@@ -31,10 +31,15 @@ static int quirks_param_set(const char *val, const struct kernel_param *kp)
 	u16 vid, pid;
 	u32 flags;
 	size_t i;
+	int err;
+
+	err = param_set_copystring(val, kp);
+	if (err)
+		return err;
 
 	mutex_lock(&quirk_mutex);
 
-	if (!val || !*val) {
+	if (!*val) {
 		quirk_count = 0;
 		kfree(quirk_list);
 		quirk_list = NULL;
@@ -119,6 +124,9 @@ static int quirks_param_set(const char *val, const struct kernel_param *kp)
 			case 'm':
 				flags |= USB_QUIRK_DISCONNECT_SUSPEND;
 				break;
+			case 'n':
+				flags |= USB_QUIRK_DELAY_CTRL_MSG;
+				break;
 			/* Ignore unrecognized flag characters */
 			}
 		}
@@ -133,7 +141,7 @@ static int quirks_param_set(const char *val, const struct kernel_param *kp)
 unlock:
 	mutex_unlock(&quirk_mutex);
 
-	return param_set_copystring(val, kp);
+	return 0;
 }
 
 static const struct kernel_param_ops quirks_param_ops = {

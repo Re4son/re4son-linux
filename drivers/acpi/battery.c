@@ -21,8 +21,12 @@
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
 
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #include <linux/kernel.h>
+#include <linux/list.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/init.h>
 #include <linux/types.h>
 #include <linux/jiffies.h>
@@ -42,7 +46,7 @@
 #include <linux/acpi.h>
 #include <linux/power_supply.h>
 
-#include "battery.h"
+#include <acpi/battery.h>
 
 #define PREFIX "ACPI: "
 
@@ -70,6 +74,8 @@ static async_cookie_t async_cookie;
 static bool battery_driver_registered;
 static int battery_bix_broken_package;
 static int battery_notification_delay_ms;
+static int battery_ac_is_broken;
+static int battery_check_pmic = 1;
 static unsigned int cache_time = 1000;
 module_param(cache_time, uint, 0644);
 MODULE_PARM_DESC(cache_time, "cache time in milliseconds");
@@ -115,6 +121,10 @@ enum {
 	   post-1.29 BIOS), but as of Nov. 2012, no such update is
 	   available for the 2010 models.  */
 	ACPI_BATTERY_QUIRK_THINKPAD_MAH,
+	/* for batteries reporting current capacity with design capacity
+	 * on a full charge, but showing degradation in full charge cap.
+	 */
+	ACPI_BATTERY_QUIRK_DEGRADED_FULL_CHARGE,
 };
 
 struct acpi_battery {
@@ -124,6 +134,7 @@ struct acpi_battery {
 	struct power_supply_desc bat_desc;
 	struct acpi_device *device;
 	struct notifier_block pm_nb;
+	struct list_head list;
 	unsigned long update_time;
 	int revision;
 	int rate_now;
@@ -200,6 +211,26 @@ static int acpi_battery_is_charged(struct acpi_battery *battery)
 	return 0;
 }
 
+static bool acpi_battery_is_degraded(struct acpi_battery *battery)
+{
+	return battery->full_charge_capacity && battery->design_capacity &&
+		battery->full_charge_capacity < battery->design_capacity;
+}
+
+static int acpi_battery_handle_discharging(struct acpi_battery *battery)
+{
+	/*
+	 * Some devices wrongly report discharging if the battery's charge level
+	 * was above the device's start charging threshold atm the AC adapter
+	 * was plugged in and the device thus did not start a new charge cycle.
+	 */
+	if ((battery_ac_is_broken || power_supply_is_system_supplied()) &&
+	    battery->rate_now == 0)
+		return POWER_SUPPLY_STATUS_NOT_CHARGING;
+
+	return POWER_SUPPLY_STATUS_DISCHARGING;
+}
+
 static int acpi_battery_get_property(struct power_supply *psy,
 				     enum power_supply_property psp,
 				     union power_supply_propval *val)
@@ -215,7 +246,7 @@ static int acpi_battery_get_property(struct power_supply *psy,
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
 		if (battery->state & ACPI_BATTERY_STATE_DISCHARGING)
-			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
+			val->intval = acpi_battery_handle_discharging(battery);
 		else if (battery->state & ACPI_BATTERY_STATE_CHARGING)
 			val->intval = POWER_SUPPLY_STATUS_CHARGING;
 		else if (acpi_battery_is_charged(battery))
@@ -471,6 +502,10 @@ static int extract_battery_info(const int use_bix,
 		   it's impossible to tell if they would need an adjustment
 		   or not if their values were higher.  */
 	}
+	if (test_bit(ACPI_BATTERY_QUIRK_DEGRADED_FULL_CHARGE, &battery->flags) &&
+	    battery->capacity_now > battery->full_charge_capacity)
+		battery->capacity_now = battery->full_charge_capacity;
+
 	return result;
 }
 
@@ -563,6 +598,10 @@ static int acpi_battery_get_state(struct acpi_battery *battery)
 		battery->capacity_now = battery->capacity_now *
 		    10000 / battery->design_voltage;
 	}
+	if (test_bit(ACPI_BATTERY_QUIRK_DEGRADED_FULL_CHARGE, &battery->flags) &&
+	    battery->capacity_now > battery->full_charge_capacity)
+		battery->capacity_now = battery->full_charge_capacity;
+
 	return result;
 }
 
@@ -626,6 +665,139 @@ static const struct device_attribute alarm_attr = {
 	.store = acpi_battery_alarm_store,
 };
 
+/*
+ * The Battery Hooking API
+ *
+ * This API is used inside other drivers that need to expose
+ * platform-specific behaviour within the generic driver in a
+ * generic way.
+ *
+ */
+
+static LIST_HEAD(acpi_battery_list);
+static LIST_HEAD(battery_hook_list);
+static DEFINE_MUTEX(hook_mutex);
+
+static void __battery_hook_unregister(struct acpi_battery_hook *hook, int lock)
+{
+	struct acpi_battery *battery;
+	/*
+	 * In order to remove a hook, we first need to
+	 * de-register all the batteries that are registered.
+	 */
+	if (lock)
+		mutex_lock(&hook_mutex);
+	list_for_each_entry(battery, &acpi_battery_list, list) {
+		hook->remove_battery(battery->bat);
+	}
+	list_del(&hook->list);
+	if (lock)
+		mutex_unlock(&hook_mutex);
+	pr_info("extension unregistered: %s\n", hook->name);
+}
+
+void battery_hook_unregister(struct acpi_battery_hook *hook)
+{
+	__battery_hook_unregister(hook, 1);
+}
+EXPORT_SYMBOL_GPL(battery_hook_unregister);
+
+void battery_hook_register(struct acpi_battery_hook *hook)
+{
+	struct acpi_battery *battery;
+
+	mutex_lock(&hook_mutex);
+	INIT_LIST_HEAD(&hook->list);
+	list_add(&hook->list, &battery_hook_list);
+	/*
+	 * Now that the driver is registered, we need
+	 * to notify the hook that a battery is available
+	 * for each battery, so that the driver may add
+	 * its attributes.
+	 */
+	list_for_each_entry(battery, &acpi_battery_list, list) {
+		if (hook->add_battery(battery->bat)) {
+			/*
+			 * If a add-battery returns non-zero,
+			 * the registration of the extension has failed,
+			 * and we will not add it to the list of loaded
+			 * hooks.
+			 */
+			pr_err("extension failed to load: %s", hook->name);
+			__battery_hook_unregister(hook, 0);
+			return;
+		}
+	}
+	pr_info("new extension: %s\n", hook->name);
+	mutex_unlock(&hook_mutex);
+}
+EXPORT_SYMBOL_GPL(battery_hook_register);
+
+/*
+ * This function gets called right after the battery sysfs
+ * attributes have been added, so that the drivers that
+ * define custom sysfs attributes can add their own.
+*/
+static void battery_hook_add_battery(struct acpi_battery *battery)
+{
+	struct acpi_battery_hook *hook_node;
+
+	mutex_lock(&hook_mutex);
+	INIT_LIST_HEAD(&battery->list);
+	list_add(&battery->list, &acpi_battery_list);
+	/*
+	 * Since we added a new battery to the list, we need to
+	 * iterate over the hooks and call add_battery for each
+	 * hook that was registered. This usually happens
+	 * when a battery gets hotplugged or initialized
+	 * during the battery module initialization.
+	 */
+	list_for_each_entry(hook_node, &battery_hook_list, list) {
+		if (hook_node->add_battery(battery->bat)) {
+			/*
+			 * The notification of the extensions has failed, to
+			 * prevent further errors we will unload the extension.
+			 */
+			__battery_hook_unregister(hook_node, 0);
+			pr_err("error in extension, unloading: %s",
+					hook_node->name);
+		}
+	}
+	mutex_unlock(&hook_mutex);
+}
+
+static void battery_hook_remove_battery(struct acpi_battery *battery)
+{
+	struct acpi_battery_hook *hook;
+
+	mutex_lock(&hook_mutex);
+	/*
+	 * Before removing the hook, we need to remove all
+	 * custom attributes from the battery.
+	 */
+	list_for_each_entry(hook, &battery_hook_list, list) {
+		hook->remove_battery(battery->bat);
+	}
+	/* Then, just remove the battery from the list */
+	list_del(&battery->list);
+	mutex_unlock(&hook_mutex);
+}
+
+static void __exit battery_hook_exit(void)
+{
+	struct acpi_battery_hook *hook;
+	struct acpi_battery_hook *ptr;
+	/*
+	 * At this point, the acpi_bus_unregister_driver()
+	 * has called remove for all batteries. We just
+	 * need to remove the hooks.
+	 */
+	list_for_each_entry_safe(hook, ptr, &battery_hook_list, list) {
+		__battery_hook_unregister(hook, 1);
+	}
+	mutex_destroy(&hook_mutex);
+}
+
 static int sysfs_add_battery(struct acpi_battery *battery)
 {
 	struct power_supply_config psy_cfg = { .drv_data = battery, };
@@ -653,6 +825,7 @@ static int sysfs_add_battery(struct acpi_battery *battery)
 		battery->bat = NULL;
 		return result;
 	}
+	battery_hook_add_battery(battery);
 	return device_create_file(&battery->bat->dev, &alarm_attr);
 }
 
@@ -663,7 +836,7 @@ static void sysfs_remove_battery(struct acpi_battery *battery)
 		mutex_unlock(&battery->sysfs_lock);
 		return;
 	}
-
+	battery_hook_remove_battery(battery);
 	device_remove_file(&battery->bat->dev, &alarm_attr);
 	power_supply_unregister(battery->bat);
 	battery->bat = NULL;
@@ -738,6 +911,15 @@ static void acpi_battery_quirks(struct acpi_battery *battery)
 				    10000 / battery->design_voltage;
 			}
 		}
+	}
+
+	if (test_bit(ACPI_BATTERY_QUIRK_DEGRADED_FULL_CHARGE, &battery->flags))
+		return;
+
+	if (acpi_battery_is_degraded(battery) &&
+	    battery->capacity_now > battery->full_charge_capacity) {
+		set_bit(ACPI_BATTERY_QUIRK_DEGRADED_FULL_CHARGE, &battery->flags);
+		battery->capacity_now = battery->full_charge_capacity;
 	}
 }
 
@@ -1166,21 +1348,62 @@ battery_notification_delay_quirk(const struct dmi_system_id *d)
 	return 0;
 }
 
+static int __init
+battery_ac_is_broken_quirk(const struct dmi_system_id *d)
+{
+	battery_ac_is_broken = 1;
+	return 0;
+}
+
+static int __init
+battery_do_not_check_pmic_quirk(const struct dmi_system_id *d)
+{
+	battery_check_pmic = 0;
+	return 0;
+}
+
 static const struct dmi_system_id bat_dmi_table[] __initconst = {
 	{
+		/* NEC LZ750/LS */
 		.callback = battery_bix_broken_package_quirk,
-		.ident = "NEC LZ750/LS",
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "NEC"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "PC-LZ750LS"),
 		},
 	},
 	{
+		/* Acer Aspire V5-573G */
 		.callback = battery_notification_delay_quirk,
-		.ident = "Acer Aspire V5-573G",
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "Aspire V5-573G"),
+		},
+	},
+	{
+		/* Point of View mobii wintab p800w */
+		.callback = battery_ac_is_broken_quirk,
+		.matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "AMI Corporation"),
+			DMI_MATCH(DMI_BOARD_NAME, "Aptio CRB"),
+			DMI_MATCH(DMI_BIOS_VERSION, "3BAIR1013"),
+			/* Above matches are too generic, add bios-date match */
+			DMI_MATCH(DMI_BIOS_DATE, "08/22/2014"),
+		},
+	},
+	{
+		/* ECS EF20EA */
+		.callback = battery_do_not_check_pmic_quirk,
+		.matches = {
+			DMI_MATCH(DMI_PRODUCT_NAME, "EF20EA"),
+		},
+	},
+	{
+		/* Lenovo Ideapad Miix 320 */
+		.callback = battery_do_not_check_pmic_quirk,
+		.matches = {
+		  DMI_EXACT_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+		  DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "80XF"),
+		  DMI_EXACT_MATCH(DMI_PRODUCT_VERSION, "Lenovo MIIX 320-10ICR"),
 		},
 	},
 	{},
@@ -1322,15 +1545,17 @@ static void __init acpi_battery_init_async(void *unused, async_cookie_t cookie)
 	unsigned int i;
 	int result;
 
-	for (i = 0; i < ARRAY_SIZE(acpi_battery_blacklist); i++)
-		if (acpi_dev_present(acpi_battery_blacklist[i], "1", -1)) {
-			pr_info(PREFIX ACPI_BATTERY_DEVICE_NAME
-				": found native %s PMIC, not loading\n",
-				acpi_battery_blacklist[i]);
-			return;
-		}
-
 	dmi_check_system(bat_dmi_table);
+
+	if (battery_check_pmic) {
+		for (i = 0; i < ARRAY_SIZE(acpi_battery_blacklist); i++)
+			if (acpi_dev_present(acpi_battery_blacklist[i], "1", -1)) {
+				pr_info(PREFIX ACPI_BATTERY_DEVICE_NAME
+					": found native %s PMIC, not loading\n",
+					acpi_battery_blacklist[i]);
+				return;
+			}
+	}
 
 #ifdef CONFIG_ACPI_PROCFS_POWER
 	acpi_battery_dir = acpi_lock_battery_dir();
@@ -1357,8 +1582,10 @@ static int __init acpi_battery_init(void)
 static void __exit acpi_battery_exit(void)
 {
 	async_synchronize_cookie(async_cookie + 1);
-	if (battery_driver_registered)
+	if (battery_driver_registered) {
 		acpi_bus_unregister_driver(&acpi_battery_driver);
+		battery_hook_exit();
+	}
 #ifdef CONFIG_ACPI_PROCFS_POWER
 	if (acpi_battery_dir)
 		acpi_unlock_battery_dir(acpi_battery_dir);

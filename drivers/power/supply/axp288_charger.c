@@ -16,6 +16,7 @@
  */
 
 #include <linux/acpi.h>
+#include <linux/dmi.h>
 #include <linux/module.h>
 #include <linux/device.h>
 #include <linux/regmap.h>
@@ -144,6 +145,28 @@ struct axp288_chrg_info {
 	int cv;
 	int max_cc;
 	int max_cv;
+};
+
+/*
+ * Table of devices which charge through a powerbarrel connector, rather then
+ * through micro-usb, with current-limits of the device specific adapter.
+ */
+const struct dmi_system_id axp288_charger_power_barrel_table[] = {
+	{	/* Lenovo Ideapad Miix 310 */
+		.matches = {
+		  DMI_EXACT_MATCH(DMI_SYS_VENDOR, "LENOVO"),
+		  DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "80SG"),
+		  DMI_EXACT_MATCH(DMI_PRODUCT_VERSION, "MIIX 310-10ICR"),
+		},
+		.driver_data = (void *)4000000l,
+	}, {	/* VIOS LTH17 */
+		.matches = {
+		  DMI_EXACT_MATCH(DMI_SYS_VENDOR, "VIOS"),
+		  DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "LTH17"),
+		},
+		.driver_data = (void *)3000000l,
+	},
+	{}
 };
 
 static inline int axp288_charger_set_cc(struct axp288_chrg_info *info, int cc)
@@ -552,6 +575,19 @@ out:
 	return IRQ_HANDLED;
 }
 
+static int axp288_charger_get_power_barrel_inlmt(int *current_limit)
+{
+	const struct dmi_system_id *dmi_id;
+
+	dmi_id = dmi_first_match(axp288_charger_power_barrel_table);
+	if (!dmi_id)
+		return -ENOENT;
+
+	*current_limit = (long)dmi_id->driver_data;
+
+	return 0;
+}
+
 static void axp288_charger_extcon_evt_worker(struct work_struct *work)
 {
 	struct axp288_chrg_info *info =
@@ -575,7 +611,10 @@ static void axp288_charger_extcon_evt_worker(struct work_struct *work)
 	}
 
 	/* Determine cable/charger type */
-	if (extcon_get_state(edev, EXTCON_CHG_USB_SDP) > 0) {
+	if (axp288_charger_get_power_barrel_inlmt(&current_limit) == 0) {
+		dev_dbg(&info->pdev->dev, "Using power-barrel table input-current-limit of %d uA\n",
+			current_limit);
+	} else if (extcon_get_state(edev, EXTCON_CHG_USB_SDP) > 0) {
 		dev_dbg(&info->pdev->dev, "USB SDP charger is connected\n");
 		current_limit = 500000;
 	} else if (extcon_get_state(edev, EXTCON_CHG_USB_CDP) > 0) {
@@ -747,6 +786,18 @@ static int axp288_charger_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct axp20x_dev *axp20x = dev_get_drvdata(pdev->dev.parent);
 	struct power_supply_config charger_cfg = {};
+	unsigned int val;
+
+	/*
+	 * On some devices the fuelgauge and charger parts of the axp288 are
+	 * not used, check that the fuelgauge is enabled (CC_CTRL != 0).
+	 */
+	ret = regmap_read(axp20x->regmap, AXP20X_CC_CTRL, &val);
+	if (ret < 0)
+		return ret;
+	if (val == 0)
+		return -ENODEV;
+
 	info = devm_kzalloc(&pdev->dev, sizeof(*info), GFP_KERNEL);
 	if (!info)
 		return -ENOMEM;
