@@ -2155,12 +2155,13 @@ static bool rt5640_micbias1_ovcd(struct snd_soc_component *component)
 
 static bool rt5640_jack_inserted(struct snd_soc_component *component)
 {
+	struct rt5640_priv *rt5640 = snd_soc_component_get_drvdata(component);
 	int val;
 
 	val = snd_soc_component_read32(component, RT5640_INT_IRQ_ST);
 	dev_dbg(component->dev, "irq status %#04x\n", val);
 
-	if (1 /* jack_info->jd_inverted */)
+	if (rt5640->jd_inverted)
 		return !(val & RT5640_JD_STATUS);
 	else
 		return (val & RT5640_JD_STATUS);
@@ -2348,7 +2349,8 @@ static irqreturn_t rt5640_irq(int irq, void *data)
 {
 	struct rt5640_priv *rt5640 = data;
 
-	queue_work(system_long_wq, &rt5640->jack_work);
+	if (rt5640->jack)
+		queue_work(system_long_wq, &rt5640->jack_work);
 
 	return IRQ_HANDLED;
 }
@@ -2361,38 +2363,10 @@ static void rt5640_cancel_work(void *data)
 	cancel_delayed_work_sync(&rt5640->bp_work);
 }
 
-static void rt5640_set_ovcd_params(struct snd_soc_component *component)
+static void rt5640_enable_jack_detect(struct snd_soc_component *component,
+				      struct snd_soc_jack *jack)
 {
 	struct rt5640_priv *rt5640 = snd_soc_component_get_drvdata(component);
-
-	snd_soc_component_write(component, RT5640_PR_BASE + RT5640_BIAS_CUR4,
-		0xa800 | rt5640->ovcd_sf);
-
-	snd_soc_component_update_bits(component, RT5640_MICBIAS,
-		RT5640_MIC1_OVTH_MASK | RT5640_MIC1_OVCD_MASK,
-		rt5640->ovcd_th | RT5640_MIC1_OVCD_EN);
-
-	/*
-	 * The over-current-detect is only reliable in detecting the absence
-	 * of over-current, when the mic-contact in the jack is short-circuited,
-	 * the hardware periodically retries if it can apply the bias-current
-	 * leading to the ovcd status flip-flopping 1-0-1 with it being 0 about
-	 * 10% of the time, as we poll the ovcd status bit we might hit that
-	 * 10%, so we enable sticky mode and when checking OVCD we clear the
-	 * status, msleep() a bit and then check to get a reliable reading.
-	 */
-	snd_soc_component_update_bits(component, RT5640_IRQ_CTRL2,
-		RT5640_MB1_OC_STKY_MASK, RT5640_MB1_OC_STKY_EN);
-}
-
-static int rt5640_set_jack(struct snd_soc_component *component,
-			   struct snd_soc_jack *jack, void *data)
-{
-	struct rt5640_priv *rt5640 = snd_soc_component_get_drvdata(component);
-	int ret;
-
-	if (!rt5640->irq)
-		return -EINVAL;
 
 	/* Select JD-source */
 	snd_soc_component_update_bits(component, RT5640_JD_CTRL,
@@ -2412,7 +2386,24 @@ static int rt5640_set_jack(struct snd_soc_component *component,
 	/* Enabling jd2 in general control 2 */
 	snd_soc_component_write(component, RT5640_DUMMY2, 0x4001);
 
-	rt5640_set_ovcd_params(component);
+	snd_soc_component_write(component, RT5640_PR_BASE + RT5640_BIAS_CUR4,
+		0xa800 | rt5640->ovcd_sf);
+
+	snd_soc_component_update_bits(component, RT5640_MICBIAS,
+		RT5640_MIC1_OVTH_MASK | RT5640_MIC1_OVCD_MASK,
+		rt5640->ovcd_th | RT5640_MIC1_OVCD_EN);
+
+	/*
+	 * The over-current-detect is only reliable in detecting the absence
+	 * of over-current, when the mic-contact in the jack is short-circuited,
+	 * the hardware periodically retries if it can apply the bias-current
+	 * leading to the ovcd status flip-flopping 1-0-1 with it being 0 about
+	 * 10% of the time, as we poll the ovcd status bit we might hit that
+	 * 10%, so we enable sticky mode and when checking OVCD we clear the
+	 * status, msleep() a bit and then check to get a reliable reading.
+	 */
+	snd_soc_component_update_bits(component, RT5640_IRQ_CTRL2,
+		RT5640_MB1_OC_STKY_MASK, RT5640_MB1_OC_STKY_EN);
 
 	/*
 	 * All IRQs get or-ed together, so we need the jack IRQ to report 0
@@ -2420,30 +2411,48 @@ static int rt5640_set_jack(struct snd_soc_component *component,
 	 * pin 0/1 instead of it being stuck to 1. So we invert the JD polarity
 	 * on systems where the hardware does not already do this.
 	 */
-	if (1 /* jack_info->jd_inverted */)
+	if (rt5640->jd_inverted)
 		snd_soc_component_write(component, RT5640_IRQ_CTRL1,
 					RT5640_IRQ_JD_NOR);
 	else
 		snd_soc_component_write(component, RT5640_IRQ_CTRL1,
 					RT5640_IRQ_JD_NOR | RT5640_JD_P_INV);
 
-	/* Make sure work is stopped on probe-error / remove */
-	ret = devm_add_action_or_reset(component->dev, rt5640_cancel_work, rt5640);
-	if (ret)
-		return ret;
-
 	rt5640->jack = jack;
-
-	ret = devm_request_irq(component->dev, rt5640->irq, rt5640_irq,
-			      IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING
-			      | IRQF_ONESHOT, "rt5640", rt5640);
-	if (ret) {
-		dev_err(component->dev, "Failed to reguest IRQ: %d\n", ret);
-		return ret;
+	if (rt5640->jack->status & SND_JACK_MICROPHONE) {
+		rt5640_enable_micbias1_for_ovcd(component);
+		rt5640_enable_micbias1_ovcd_irq(component);
 	}
 
+	enable_irq(rt5640->irq);
 	/* sync initial jack state */
 	queue_work(system_long_wq, &rt5640->jack_work);
+}
+
+static void rt5640_disable_jack_detect(struct snd_soc_component *component)
+{
+	struct rt5640_priv *rt5640 = snd_soc_component_get_drvdata(component);
+
+	disable_irq(rt5640->irq);
+	rt5640_cancel_work(rt5640);
+
+	if (rt5640->jack->status & SND_JACK_MICROPHONE) {
+		rt5640_disable_micbias1_ovcd_irq(component);
+		rt5640_disable_micbias1_for_ovcd(component);
+		snd_soc_jack_report(rt5640->jack, 0, SND_JACK_BTN_0);
+	}
+
+	rt5640->jack = NULL;
+}
+
+static int rt5640_set_jack(struct snd_soc_component *component,
+			   struct snd_soc_jack *jack, void *data)
+{
+	if (jack)
+		rt5640_enable_jack_detect(component, jack);
+	else
+		rt5640_disable_jack_detect(component);
+
 	return 0;
 }
 
@@ -2539,6 +2548,9 @@ static int rt5640_probe(struct snd_soc_component *component)
 				 val);
 	}
 
+	/* Sofar all known boards use a standard inverted jack switch */
+	rt5640->jd_inverted = true;
+
 	/*
 	 * Testing on various boards has shown that good defaults for the OVCD
 	 * threshold and scale-factor are 2000µA and 0.75. For an effective
@@ -2587,19 +2599,6 @@ static int rt5640_suspend(struct snd_soc_component *component)
 {
 	struct rt5640_priv *rt5640 = snd_soc_component_get_drvdata(component);
 
-	if (rt5640->jack) {
-		dev_dbg(component->dev, "suspend, disabling irq\n");
-		disable_irq(rt5640->irq);
-		rt5640_cancel_work(rt5640);
-
-		if (rt5640->jack->status & SND_JACK_MICROPHONE) {
-			dev_dbg(component->dev, "suspend, disabling button monitoring\n");
-			snd_soc_jack_report(rt5640->jack, 0, SND_JACK_BTN_0);
-			rt5640_disable_micbias1_ovcd_irq(component);
-			rt5640_disable_micbias1_for_ovcd(component);
-		}
-	}
-
 	snd_soc_component_force_bias_level(component, SND_SOC_BIAS_OFF);
 	rt5640_reset(component);
 	regcache_cache_only(rt5640->regmap, true);
@@ -2621,20 +2620,6 @@ static int rt5640_resume(struct snd_soc_component *component)
 
 	regcache_cache_only(rt5640->regmap, false);
 	regcache_sync(rt5640->regmap);
-
-	/* The regmap-cache does not fully restore these. */
-	rt5640_set_ovcd_params(component);
-
-	if (rt5640->jack) {
-		if (rt5640->jack->status & SND_JACK_MICROPHONE) {
-			dev_dbg(component->dev, "resume, restarting button monitoring\n");
-			rt5640_enable_micbias1_for_ovcd(component);
-			rt5640_enable_micbias1_ovcd_irq(component);
-		}
-		dev_dbg(component->dev, "resume, re-enabling irq\n");
-		enable_irq(rt5640->irq);
-		queue_work(system_long_wq, &rt5640->jack_work);
-	}
 
 	return 0;
 }
@@ -2838,6 +2823,23 @@ static int rt5640_i2c_probe(struct i2c_client *i2c,
 	rt5640->irq = i2c->irq;
 	INIT_DELAYED_WORK(&rt5640->bp_work, rt5640_button_press_work);
 	INIT_WORK(&rt5640->jack_work, rt5640_jack_work);
+
+	/* Make sure work is stopped on probe-error / remove */
+	ret = devm_add_action_or_reset(&i2c->dev, rt5640_cancel_work, rt5640);
+	if (ret)
+		return ret;
+
+	ret = devm_request_irq(&i2c->dev, rt5640->irq, rt5640_irq,
+			       IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING
+			       | IRQF_ONESHOT, "rt5640", rt5640);
+	if (ret == 0) {
+		/* Gets re-enabled by rt5640_set_jack() */
+		disable_irq(rt5640->irq);
+	} else {
+		dev_warn(&i2c->dev, "Failed to reguest IRQ %d: %d\n",
+			 rt5640->irq, ret);
+		rt5640->irq = -ENXIO;
+	}
 
 	return devm_snd_soc_register_component(&i2c->dev,
 				      &soc_component_dev_rt5640,

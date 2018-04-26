@@ -653,10 +653,7 @@ static int byt_rt5640_init(struct snd_soc_pcm_runtime *runtime)
 		}
 		snd_jack_set_key(priv->jack.jack, SND_JACK_BTN_0,
 				 KEY_PLAYPAUSE);
-
-		ret = snd_soc_component_set_jack(component, &priv->jack, NULL);
-		if (ret)
-			return ret;
+		snd_soc_component_set_jack(component, &priv->jack, NULL);
 	}
 
 	return 0;
@@ -800,6 +797,47 @@ static struct snd_soc_dai_link byt_rt5640_dais[] = {
 };
 
 /* SoC card */
+static char byt_rt5640_codec_name[SND_ACPI_I2C_ID_LEN];
+static char byt_rt5640_codec_aif_name[12]; /*  = "rt5640-aif[1|2]" */
+static char byt_rt5640_cpu_dai_name[10]; /*  = "ssp[0|2]-port" */
+
+static int byt_rt5640_suspend(struct snd_soc_card *card)
+{
+	struct snd_soc_component *component;
+
+	if (!BYT_RT5640_JDSRC(byt_rt5640_quirk))
+		return 0;
+
+	list_for_each_entry(component, &card->component_dev_list, card_list) {
+		if (!strcmp(component->name, byt_rt5640_codec_name)) {
+			dev_dbg(component->dev, "disabling jack detect before suspend\n");
+			snd_soc_component_set_jack(component, NULL, NULL);
+			break;
+		}
+	}
+
+	return 0;
+}
+
+static int byt_rt5640_resume(struct snd_soc_card *card)
+{
+	struct byt_rt5640_private *priv = snd_soc_card_get_drvdata(card);
+	struct snd_soc_component *component;
+
+	if (!BYT_RT5640_JDSRC(byt_rt5640_quirk))
+		return 0;
+
+	list_for_each_entry(component, &card->component_dev_list, card_list) {
+		if (!strcmp(component->name, byt_rt5640_codec_name)) {
+			dev_dbg(component->dev, "re-enabling jack detect after resume\n");
+			snd_soc_component_set_jack(component, &priv->jack, NULL);
+			break;
+		}
+	}
+
+	return 0;
+}
+
 static struct snd_soc_card byt_rt5640_card = {
 	.name = "bytcr-rt5640",
 	.owner = THIS_MODULE,
@@ -810,11 +848,9 @@ static struct snd_soc_card byt_rt5640_card = {
 	.dapm_routes = byt_rt5640_audio_map,
 	.num_dapm_routes = ARRAY_SIZE(byt_rt5640_audio_map),
 	.fully_routed = true,
+	.suspend_pre = byt_rt5640_suspend,
+	.resume_post = byt_rt5640_resume,
 };
-
-static char byt_rt5640_codec_name[SND_ACPI_I2C_ID_LEN];
-static char byt_rt5640_codec_aif_name[12]; /*  = "rt5640-aif[1|2]" */
-static char byt_rt5640_cpu_dai_name[10]; /*  = "ssp[0|2]-port" */
 
 static bool is_valleyview(void)
 {

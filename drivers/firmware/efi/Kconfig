@@ -165,9 +165,6 @@ config RESET_ATTACK_MITIGATION
 	  reboots.
 
 config EFI_EMBEDDED_FIRMWARE
-	# This needs boot-services-code to be kept around till after mm_init()
-	# so make this X86 only for now
-	depends on EFI_STUB && X86
 	bool
 
 endmenu
