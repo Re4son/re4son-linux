@@ -74,7 +74,7 @@ static inline int fw_get_efi_embedded_fw(struct device *dev,
 					 struct fw_priv *fw_priv,
 					 enum fw_opt *opt_flags, int ret)
 {
-    return ret;
+	return ret;
 }
 #endif /* CONFIG_EFI_EMBEDDED_FIRMWARE */
 

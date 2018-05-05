@@ -101,9 +101,6 @@ void __init efi_check_for_embedded_firmwares(void)
 	efi_memory_desc_t *md;
 	int i, r;
 
-	if (!efi_enabled(EFI_BOOT_SERVICES))
-		return;
-
 	for (i = 0; embedded_fw_table[i]; i++) {
 		dmi_id = dmi_first_match(embedded_fw_table[i]);
 		if (!dmi_id)
@@ -152,3 +149,4 @@ int efi_get_embedded_fw(const char *name, void **data, size_t *size,
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(efi_get_embedded_fw);

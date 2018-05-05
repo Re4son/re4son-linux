@@ -35,8 +35,7 @@ int fw_get_efi_embedded_fw(struct device *dev, struct fw_priv *fw_priv,
 		return ret;
 	}
 
-	rc = security_kernel_post_read_file(NULL, fw_priv->data, fw_priv->size,
-					    id);
+	rc = security_kernel_post_read_file(NULL, fw_priv->data, size, id);
 	if (rc) {
 		if (id != READING_FIRMWARE_PREALLOC_BUFFER) {
 			vfree(fw_priv->data);

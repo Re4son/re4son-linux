@@ -81,8 +81,8 @@ enum {
 #define BYT_RT5640_MCLK_EN		BIT(22)
 #define BYT_RT5640_MCLK_25MHZ		BIT(23)
 
-/* in1-diff + dmic-pin + jdsrc + ovcd-th + -sf + terminating empty entry */
-#define MAX_NO_PROPS 6
+/* in-diff or dmic-pin + jdsrc + ovcd-th + -sf + terminating empty entry */
+#define MAX_NO_PROPS 5
 
 struct byt_rt5640_private {
 	struct snd_soc_jack jack;
@@ -385,81 +385,9 @@ static int byt_rt5640_aif1_hw_params(struct snd_pcm_substream *substream,
 	return byt_rt5640_prepare_and_enable_pll1(dai, params_rate(params));
 }
 
-static int byt_rt5640_quirk_cb(const struct dmi_system_id *id)
-{
-	byt_rt5640_quirk = (unsigned long)id->driver_data;
-	return 1;
-}
-
+/* Please keep this list alphabetically sorted */
 static const struct dmi_system_id byt_rt5640_quirk_table[] = {
 	{
-		.callback = byt_rt5640_quirk_cb,
-		.matches = {
-			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
-			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "T100TA"),
-		},
-		.driver_data = (void *)(BYT_RT5640_IN1_MAP |
-					BYT_RT5640_MCLK_EN |
-					BYT_RT5640_JD_SRC_JD2_IN4N |
-					BYT_RT5640_OVCD_TH_2000UA |
-					BYT_RT5640_OVCD_SF_0P75),
-	},
-	{
-		.callback = byt_rt5640_quirk_cb,
-		.matches = {
-			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
-			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "T100TAF"),
-		},
-		.driver_data = (void *)(BYT_RT5640_IN1_MAP |
-					BYT_RT5640_MONO_SPEAKER |
-					BYT_RT5640_DIFF_MIC |
-					BYT_RT5640_SSP0_AIF2 |
-					BYT_RT5640_MCLK_EN |
-					BYT_RT5640_JD_SRC_JD2_IN4N |
-					BYT_RT5640_OVCD_TH_2000UA |
-					BYT_RT5640_OVCD_SF_0P75),
-	},
-	{
-		.callback = byt_rt5640_quirk_cb,
-		.matches = {
-			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "DellInc."),
-			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "Venue 8 Pro 5830"),
-		},
-		.driver_data = (void *)(BYT_RT5640_DMIC2_MAP |
-					BYT_RT5640_MCLK_EN |
-					BYT_RT5640_JD_SRC_JD2_IN4N |
-					BYT_RT5640_OVCD_TH_2000UA |
-					BYT_RT5640_OVCD_SF_0P75),
-	},
-	{
-		.callback = byt_rt5640_quirk_cb,
-		.matches = {
-			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "Hewlett-Packard"),
-			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "HP ElitePad 1000 G2"),
-		},
-		.driver_data = (void *)(BYT_RT5640_IN1_MAP |
-					BYT_RT5640_MCLK_EN),
-	},
-	{
-		.callback = byt_rt5640_quirk_cb,
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Circuitco"),
-			DMI_MATCH(DMI_PRODUCT_NAME, "Minnowboard Max B3 PLATFORM"),
-		},
-		.driver_data = (void *)(BYT_RT5640_DMIC1_MAP),
-	},
-	{
-		.callback = byt_rt5640_quirk_cb,
-		.matches = {
-			DMI_MATCH(DMI_BOARD_VENDOR, "TECLAST"),
-			DMI_MATCH(DMI_BOARD_NAME, "tPAD"),
-		},
-		.driver_data = (void *)(BYT_RT5640_IN3_MAP |
-					BYT_RT5640_MCLK_EN |
-					BYT_RT5640_SSP0_AIF1),
-	},
-	{
-		.callback = byt_rt5640_quirk_cb,
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "Aspire SW5-012"),
@@ -470,7 +398,104 @@ static const struct dmi_system_id byt_rt5640_quirk_table[] = {
 
 	},
 	{
-		.callback = byt_rt5640_quirk_cb,
+		.matches = {
+			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
+			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "T100TA"),
+		},
+		.driver_data = (void *)(BYT_RT5640_IN1_MAP |
+					BYT_RT5640_JD_SRC_JD2_IN4N |
+					BYT_RT5640_OVCD_TH_2000UA |
+					BYT_RT5640_OVCD_SF_0P75 |
+					BYT_RT5640_MCLK_EN),
+	},
+	{
+		.matches = {
+			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "ASUSTeK COMPUTER INC."),
+			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "T100TAF"),
+		},
+		.driver_data = (void *)(BYT_RT5640_IN1_MAP |
+					BYT_RT5640_MONO_SPEAKER |
+					BYT_RT5640_DIFF_MIC |
+					BYT_RT5640_SSP0_AIF2 |
+					BYT_RT5640_MCLK_EN),
+	},
+	{
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Circuitco"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "Minnowboard Max B3 PLATFORM"),
+		},
+		.driver_data = (void *)(BYT_RT5640_DMIC1_MAP),
+	},
+	{
+		.matches = {
+			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "Dell Inc."),
+			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "Venue 8 Pro 5830"),
+		},
+		.driver_data = (void *)(BYT_RT5640_DMIC1_MAP |
+					BYT_RT5640_JD_SRC_JD2_IN4N |
+					BYT_RT5640_OVCD_TH_2000UA |
+					BYT_RT5640_OVCD_SF_0P75 |
+					BYT_RT5640_MONO_SPEAKER |
+					BYT_RT5640_MCLK_EN),
+	},
+	{
+		.matches = {
+			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "Hewlett-Packard"),
+			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "HP ElitePad 1000 G2"),
+		},
+		.driver_data = (void *)(BYT_RT5640_IN1_MAP |
+					BYT_RT5640_MCLK_EN),
+	},
+	{	/* HP Pavilion x2 10-n000nd */
+		.matches = {
+			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "Hewlett-Packard"),
+			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "HP Pavilion x2 Detachable"),
+		},
+		.driver_data = (void *)(BYT_RT5640_DMIC1_MAP |
+					BYT_RT5640_JD_SRC_JD2_IN4N |
+					BYT_RT5640_OVCD_TH_1500UA |
+					BYT_RT5640_OVCD_SF_0P75 |
+					BYT_RT5640_SSP0_AIF1 |
+					BYT_RT5640_MCLK_EN),
+	},
+	{	/* I.T.Works TW891 */
+		.matches = {
+			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "To be filled by O.E.M."),
+			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "TW891"),
+			DMI_EXACT_MATCH(DMI_BOARD_VENDOR, "To be filled by O.E.M."),
+			DMI_EXACT_MATCH(DMI_BOARD_NAME, "TW891"),
+		},
+		.driver_data = (void *)(BYT_RT5640_IN3_MAP |
+					BYT_RT5640_JD_SRC_JD1_IN4P |
+					BYT_RT5640_OVCD_TH_2000UA |
+					BYT_RT5640_OVCD_SF_0P75 |
+					BYT_RT5640_MONO_SPEAKER |
+					BYT_RT5640_DIFF_MIC |
+					BYT_RT5640_SSP0_AIF1 |
+					BYT_RT5640_MCLK_EN),
+	},
+	{
+		.matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "TECLAST"),
+			DMI_MATCH(DMI_BOARD_NAME, "tPAD"),
+		},
+		.driver_data = (void *)(BYT_RT5640_IN3_MAP |
+					BYT_RT5640_MCLK_EN |
+					BYT_RT5640_SSP0_AIF1),
+	},
+	{	/* Toshiba Satellite Click Mini L9W-B */
+		.matches = {
+			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "TOSHIBA"),
+			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "SATELLITE Click Mini L9W-B"),
+		},
+		.driver_data = (void *)(BYT_RT5640_DMIC1_MAP |
+					BYT_RT5640_JD_SRC_JD2_IN4N |
+					BYT_RT5640_OVCD_TH_1500UA |
+					BYT_RT5640_OVCD_SF_0P75 |
+					BYT_RT5640_SSP0_AIF1 |
+					BYT_RT5640_MCLK_EN),
+	},
+	{	/* Catch-all for generic Insyde tablets, must be last */
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "Insyde"),
 		},
@@ -496,9 +521,6 @@ static int byt_rt5640_add_codec_device_props(const char *i2c_dev_name)
 	if (!i2c_dev)
 		return -EPROBE_DEFER;
 
-	if (byt_rt5640_quirk & BYT_RT5640_DIFF_MIC)
-		props[cnt++] = PROPERTY_ENTRY_BOOL("realtek,in1-differential");
-
 	switch (BYT_RT5640_MAP(byt_rt5640_quirk)) {
 	case BYT_RT5640_DMIC1_MAP:
 		props[cnt++] = PROPERTY_ENTRY_U32("realtek,dmic1-data-pin",
@@ -507,6 +529,16 @@ static int byt_rt5640_add_codec_device_props(const char *i2c_dev_name)
 	case BYT_RT5640_DMIC2_MAP:
 		props[cnt++] = PROPERTY_ENTRY_U32("realtek,dmic2-data-pin",
 						  RT5640_DMIC2_DATA_PIN_IN1N);
+		break;
+	case BYT_RT5640_IN1_MAP:
+		if (byt_rt5640_quirk & BYT_RT5640_DIFF_MIC)
+			props[cnt++] =
+				PROPERTY_ENTRY_BOOL("realtek,in1-differential");
+		break;
+	case BYT_RT5640_IN3_MAP:
+		if (byt_rt5640_quirk & BYT_RT5640_DIFF_MIC)
+			props[cnt++] =
+				PROPERTY_ENTRY_BOOL("realtek,in3-differential");
 		break;
 	}
 
@@ -800,6 +832,7 @@ static struct snd_soc_dai_link byt_rt5640_dais[] = {
 static char byt_rt5640_codec_name[SND_ACPI_I2C_ID_LEN];
 static char byt_rt5640_codec_aif_name[12]; /*  = "rt5640-aif[1|2]" */
 static char byt_rt5640_cpu_dai_name[10]; /*  = "ssp[0|2]-port" */
+static char byt_rt5640_long_name[40]; /* = "bytcr-rt5640-*-spk-*-mic" */
 
 static int byt_rt5640_suspend(struct snd_soc_card *card)
 {
@@ -871,6 +904,8 @@ struct acpi_chan_package {   /* ACPICA seems to require 64 bit integers */
 
 static int snd_byt_rt5640_mc_probe(struct platform_device *pdev)
 {
+	const char * const map_name[] = { "dmic1", "dmic2", "in1", "in3" };
+	const struct dmi_system_id *dmi_id;
 	struct byt_rt5640_private *priv;
 	struct snd_soc_acpi_mach *mach;
 	const char *i2c_name = NULL;
@@ -971,7 +1006,9 @@ static int snd_byt_rt5640_mc_probe(struct platform_device *pdev)
 	}
 
 	/* check quirks before creating card */
-	dmi_check_system(byt_rt5640_quirk_table);
+	dmi_id = dmi_first_match(byt_rt5640_quirk_table);
+	if (dmi_id)
+		byt_rt5640_quirk = (unsigned long)dmi_id->driver_data;
 	if (quirk_override) {
 		dev_info(&pdev->dev, "Overriding quirk 0x%x => 0x%x\n",
 			 (unsigned int)byt_rt5640_quirk, quirk_override);
@@ -1028,6 +1065,13 @@ static int snd_byt_rt5640_mc_probe(struct platform_device *pdev)
 			byt_rt5640_quirk &= ~BYT_RT5640_MCLK_EN;
 		}
 	}
+
+	snprintf(byt_rt5640_long_name, sizeof(byt_rt5640_long_name),
+		 "bytcr-rt5640-%s-spk-%s-mic",
+		 (byt_rt5640_quirk & BYT_RT5640_MONO_SPEAKER) ?
+			"mono" : "stereo",
+		 map_name[BYT_RT5640_MAP(byt_rt5640_quirk)]);
+	byt_rt5640_card.long_name = byt_rt5640_long_name;
 
 	ret_val = devm_snd_soc_register_card(&pdev->dev, &byt_rt5640_card);
 

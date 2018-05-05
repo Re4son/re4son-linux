@@ -419,7 +419,7 @@ static int __init efisubsys_init(void)
 		goto err_remove_group;
 	}
 
-	if (efi_enabled(EFI_DBG) && efi_enabled(EFI_BOOT_SERVICES))
+	if (efi_enabled(EFI_DBG) && efi_enabled(EFI_PRESERVE_BS_REGIONS))
 		efi_debugfs_init();
 
 	return 0;
