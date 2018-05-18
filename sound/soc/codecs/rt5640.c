@@ -2548,8 +2548,8 @@ static int rt5640_probe(struct snd_soc_component *component)
 				 val);
 	}
 
-	/* Sofar all known boards use a standard inverted jack switch */
-	rt5640->jd_inverted = true;
+	if (!device_property_read_bool(component->dev, "realtek,jack-detect-not-inverted"))
+		rt5640->jd_inverted = true;
 
 	/*
 	 * Testing on various boards has shown that good defaults for the OVCD

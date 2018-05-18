@@ -31,10 +31,12 @@
 #define ELAN_FEATURE_SIZE	5
 #define ELAN_PARAM_MAX_X	6
 #define ELAN_PARAM_MAX_Y	7
-#define ELAN_PARAM_DPI		8
+#define ELAN_PARAM_RES		8
 
 #define ELAN_MUTE_LED_REPORT	0xBC
 #define ELAN_LED_REPORT_SIZE	8
+
+#define ELAN_HAS_LED		BIT(0)
 
 struct elan_drvdata {
 	struct input_dev *input;
@@ -43,6 +45,8 @@ struct elan_drvdata {
 	u8 mute_led_state;
 	u16 max_x;
 	u16 max_y;
+	u16 res_x;
+	u16 res_y;
 };
 
 static int is_not_elan_touchpad(struct hid_device *hdev)
@@ -67,6 +71,84 @@ static int elan_input_mapping(struct hid_device *hdev, struct hid_input *hi,
 	return 0;
 }
 
+static int elan_get_device_param(struct hid_device *hdev,
+				 unsigned char *dmabuf, unsigned char param)
+{
+	int ret;
+
+	dmabuf[0] = ELAN_FEATURE_REPORT;
+	dmabuf[1] = 0x05;
+	dmabuf[2] = 0x03;
+	dmabuf[3] = param;
+	dmabuf[4] = 0x01;
+
+	ret = hid_hw_raw_request(hdev, ELAN_FEATURE_REPORT, dmabuf,
+				 ELAN_FEATURE_SIZE, HID_FEATURE_REPORT,
+				 HID_REQ_SET_REPORT);
+	if (ret != ELAN_FEATURE_SIZE) {
+		hid_err(hdev, "Set report error for parm %d: %d\n", param, ret);
+		return ret;
+	}
+
+	ret = hid_hw_raw_request(hdev, ELAN_FEATURE_REPORT, dmabuf,
+				 ELAN_FEATURE_SIZE, HID_FEATURE_REPORT,
+				 HID_REQ_GET_REPORT);
+	if (ret != ELAN_FEATURE_SIZE) {
+		hid_err(hdev, "Get report error for parm %d: %d\n", param, ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+static unsigned int elan_convert_res(char val)
+{
+	int res;
+
+	if (val & 0x80) {
+		val = ~val + 1;
+		res = (790 - val * 10) * 10 / 254;
+	} else {
+		res = (val * 10 + 790) * 10 / 254;
+	}
+
+	return res;
+}
+
+static int elan_get_device_params(struct hid_device *hdev)
+{
+	struct elan_drvdata *drvdata = hid_get_drvdata(hdev);
+	unsigned char *dmabuf;
+	int ret;
+
+	dmabuf = kmalloc(ELAN_FEATURE_SIZE, GFP_KERNEL);
+	if (!dmabuf)
+		return -ENOMEM;
+
+	ret = elan_get_device_param(hdev, dmabuf, ELAN_PARAM_MAX_X);
+	if (ret)
+		goto err;
+
+	drvdata->max_x = (dmabuf[4] << 8) | dmabuf[3];
+
+	ret = elan_get_device_param(hdev, dmabuf, ELAN_PARAM_MAX_Y);
+	if (ret)
+		goto err;
+
+	drvdata->max_y = (dmabuf[4] << 8) | dmabuf[3];
+
+	ret = elan_get_device_param(hdev, dmabuf, ELAN_PARAM_RES);
+	if (ret)
+		goto err;
+
+	drvdata->res_x = elan_convert_res(dmabuf[3]);
+	drvdata->res_y = elan_convert_res(dmabuf[4]);
+
+err:
+	kfree(dmabuf);
+	return ret;
+}
+
 static int elan_input_configured(struct hid_device *hdev, struct hid_input *hi)
 {
 	int ret;
@@ -75,6 +157,10 @@ static int elan_input_configured(struct hid_device *hdev, struct hid_input *hi)
 
 	if (is_not_elan_touchpad(hdev))
 		return 0;
+
+	ret = elan_get_device_params(hdev);
+	if (ret)
+		return ret;
 
 	input = devm_input_allocate_device(&hdev->dev);
 	if (!input)
@@ -104,6 +190,9 @@ static int elan_input_configured(struct hid_device *hdev, struct hid_input *hi)
 		hid_err(hdev, "Failed to init elan MT slots: %d\n", ret);
 		return ret;
 	}
+
+	input_abs_set_res(input, ABS_X, drvdata->res_x);
+	input_abs_set_res(input, ABS_Y, drvdata->res_y);
 
 	ret = input_register_device(input);
 	if (ret) {
@@ -331,63 +420,6 @@ static int elan_init_mute_led(struct hid_device *hdev)
 	return devm_led_classdev_register(&hdev->dev, mute_led);
 }
 
-static int elan_get_device_param(struct hid_device *hdev,
-				 unsigned char *dmabuf, unsigned char param)
-{
-	int ret;
-
-	dmabuf[0] = ELAN_FEATURE_REPORT;
-	dmabuf[1] = 0x05;
-	dmabuf[2] = 0x03;
-	dmabuf[3] = param;
-	dmabuf[4] = 0x01;
-
-	ret = hid_hw_raw_request(hdev, ELAN_FEATURE_REPORT, dmabuf,
-				 ELAN_FEATURE_SIZE, HID_FEATURE_REPORT,
-				 HID_REQ_SET_REPORT);
-	if (ret != ELAN_FEATURE_SIZE) {
-		hid_err(hdev, "Set report error for parm %d: %d\n", param, ret);
-		return ret;
-	}
-
-	ret = hid_hw_raw_request(hdev, ELAN_FEATURE_REPORT, dmabuf,
-				 ELAN_FEATURE_SIZE, HID_FEATURE_REPORT,
-				 HID_REQ_GET_REPORT);
-	if (ret != ELAN_FEATURE_SIZE) {
-		hid_err(hdev, "Get report error for parm %d: %d\n", param, ret);
-		return ret;
-	}
-
-	return 0;
-}
-
-static int elan_get_device_params(struct hid_device *hdev)
-{
-	struct elan_drvdata *drvdata = hid_get_drvdata(hdev);
-	unsigned char *dmabuf;
-	int ret;
-
-	dmabuf = kmalloc(ELAN_FEATURE_SIZE, GFP_KERNEL);
-	if (!dmabuf)
-		return -ENOMEM;
-
-	ret = elan_get_device_param(hdev, dmabuf, ELAN_PARAM_MAX_X);
-	if (ret)
-		goto err;
-
-	drvdata->max_x = (dmabuf[4] << 8) | dmabuf[3];
-
-	ret = elan_get_device_param(hdev, dmabuf, ELAN_PARAM_MAX_Y);
-	if (ret)
-		goto err;
-
-	drvdata->max_y = (dmabuf[4] << 8) | dmabuf[3];
-
-err:
-	kfree(dmabuf);
-	return ret;
-}
-
 static int elan_probe(struct hid_device *hdev, const struct hid_device_id *id)
 {
 	int ret;
@@ -421,17 +453,15 @@ static int elan_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		goto err;
 	}
 
-	ret = elan_get_device_params(hdev);
-	if (ret)
-		goto err;
-
 	ret = elan_start_multitouch(hdev);
 	if (ret)
 		goto err;
 
-	ret = elan_init_mute_led(hdev);
-	if (ret)
-		goto err;
+	if (id->driver_data & ELAN_HAS_LED) {
+		ret = elan_init_mute_led(hdev);
+		if (ret)
+			goto err;
+	}
 
 	return 0;
 err:
@@ -445,7 +475,9 @@ static void elan_remove(struct hid_device *hdev)
 }
 
 static const struct hid_device_id elan_devices[] = {
-	{ HID_USB_DEVICE(USB_VENDOR_ID_ELAN, USB_DEVICE_ID_HP_X2_10_COVER) },
+	{ HID_USB_DEVICE(USB_VENDOR_ID_ELAN, USB_DEVICE_ID_HP_X2) },
+	{ HID_USB_DEVICE(USB_VENDOR_ID_ELAN, USB_DEVICE_ID_HP_X2_10_COVER),
+	  .driver_data = ELAN_HAS_LED },
 	{ }
 };
 MODULE_DEVICE_TABLE(hid, elan_devices);

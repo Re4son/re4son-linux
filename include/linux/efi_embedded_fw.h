@@ -11,13 +11,13 @@
  * @name:   Name to register the firmware with if found
  * @prefix: First 8 bytes of the firmware
  * @length: Length of the firmware in bytes including prefix
- * @crc:    Inverted little endian Ethernet style CRC32, with 0xffffffff seed
+ * @sha256: SHA256 of the firmware
  */
 struct efi_embedded_fw_desc {
 	const char *name;
 	u8 prefix[8];
 	u32 length;
-	u32 crc;
+	u8 sha256[8];
 };
 
 extern const struct dmi_system_id touchscreen_dmi_table[];

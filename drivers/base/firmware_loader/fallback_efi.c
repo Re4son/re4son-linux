@@ -11,8 +11,8 @@
 int fw_get_efi_embedded_fw(struct device *dev, struct fw_priv *fw_priv,
 			   enum fw_opt *opt_flags, int ret)
 {
-	enum kernel_read_file_id id = READING_FIRMWARE;
 	size_t size, max = INT_MAX;
+	bool free_on_err = true;
 	int rc;
 
 	if (!dev)
@@ -23,10 +23,14 @@ int fw_get_efi_embedded_fw(struct device *dev, struct fw_priv *fw_priv,
 
 	*opt_flags |= FW_OPT_NO_WARN | FW_OPT_NOCACHE | FW_OPT_NOFALLBACK;
 
+	rc = security_kernel_read_file(NULL, READING_FIRMWARE_EFI_EMBEDDED);
+	if (rc)
+		return rc;
+
 	/* Already populated data member means we're loading into a buffer */
 	if (fw_priv->data) {
-		id = READING_FIRMWARE_PREALLOC_BUFFER;
 		max = fw_priv->allocated_size;
+		free_on_err = false;
 	}
 
 	rc = efi_get_embedded_fw(fw_priv->fw_name, &fw_priv->data, &size, max);
@@ -35,9 +39,10 @@ int fw_get_efi_embedded_fw(struct device *dev, struct fw_priv *fw_priv,
 		return ret;
 	}
 
-	rc = security_kernel_post_read_file(NULL, fw_priv->data, size, id);
+	rc = security_kernel_post_read_file(NULL, fw_priv->data, size,
+					    READING_FIRMWARE_EFI_EMBEDDED);
 	if (rc) {
-		if (id != READING_FIRMWARE_PREALLOC_BUFFER) {
+		if (free_on_err) {
 			vfree(fw_priv->data);
 			fw_priv->data = NULL;
 		}

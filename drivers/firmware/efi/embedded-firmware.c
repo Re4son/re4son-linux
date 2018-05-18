@@ -5,7 +5,7 @@
  * Copyright (c) 2018 Hans de Goede <hdegoede@redhat.com>
  */
 
-#include <linux/crc32.h>
+#include <crypto/sha.h>
 #include <linux/dmi.h>
 #include <linux/efi.h>
 #include <linux/efi_embedded_fw.h>
@@ -39,59 +39,58 @@ static const struct dmi_system_id * const embedded_fw_table[] = {
 static int __init efi_check_md_for_embedded_firmware(
 	efi_memory_desc_t *md, const struct efi_embedded_fw_desc *desc)
 {
+	const u64 prefix = *((u64 *)desc->prefix);
+	struct sha256_state sctx;
 	struct embedded_fw *fw;
+	u8 sha256[8];
 	u64 i, size;
-	u32 crc;
-	u8 *mem;
+	void *map;
 
 	size = md->num_pages << EFI_PAGE_SHIFT;
-	mem = memremap(md->phys_addr, size, MEMREMAP_WB);
-	if (!mem) {
+	map = memremap(md->phys_addr, size, MEMREMAP_WB);
+	if (!map) {
 		pr_err("Error mapping EFI mem at %#llx\n", md->phys_addr);
 		return -ENOMEM;
 	}
 
 	size -= desc->length;
 	for (i = 0; i < size; i += 8) {
-		if (*((u64 *)(mem + i)) != *((u64 *)desc->prefix))
+		u64 *mem = map + i;
+
+		if (*mem != prefix)
 			continue;
 
-		/* Seed with ~0, invert to match crc32 userspace utility */
-		crc = ~crc32(~0, mem + i, desc->length);
-		if (crc == desc->crc)
+		sha256_init_direct(&sctx);
+		sha256_update_direct(&sctx, map + i, desc->length);
+		sha256_final_direct(&sctx, sha256);
+		if (memcmp(sha256, desc->sha256, 8) == 0)
 			break;
 	}
-
-	memunmap(mem);
-
-	if (i >= size)
+	if (i >= size) {
+		memunmap(map);
 		return -ENOENT;
+	}
 
-	pr_info("Found EFI embedded fw '%s' crc %08x\n", desc->name, desc->crc);
+	pr_info("Found EFI embedded fw '%s'\n", desc->name);
 
 	fw = kmalloc(sizeof(*fw), GFP_KERNEL);
-	if (!fw)
+	if (!fw) {
+		memunmap(map);
 		return -ENOMEM;
-
-	mem = memremap(md->phys_addr + i, desc->length, MEMREMAP_WB);
-	if (!mem) {
-		pr_err("Error mapping embedded firmware\n");
-		goto error_free_fw;
 	}
-	fw->data = kmemdup(mem, desc->length, GFP_KERNEL);
-	memunmap(mem);
-	if (!fw->data)
-		goto error_free_fw;
+
+	fw->data = kmemdup(map + i, desc->length, GFP_KERNEL);
+	memunmap(map);
+	if (!fw->data) {
+		kfree(fw);
+		return -ENOMEM;
+	}
 
 	fw->name = desc->name;
 	fw->length = desc->length;
 	list_add(&fw->list, &found_fw_list);
 
 	return 0;
-
-error_free_fw:
-	kfree(fw);
-	return -ENOMEM;
 }
 
 void __init efi_check_for_embedded_firmwares(void)

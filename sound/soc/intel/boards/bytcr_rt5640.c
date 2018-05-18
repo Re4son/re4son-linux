@@ -73,6 +73,7 @@ enum {
 #define BYT_RT5640_JDSRC(quirk)		(((quirk) & GENMASK(7, 4)) >> 4)
 #define BYT_RT5640_OVCD_TH(quirk)	(((quirk) & GENMASK(12, 8)) >> 8)
 #define BYT_RT5640_OVCD_SF(quirk)	(((quirk) & GENMASK(14, 13)) >> 13)
+#define BYT_RT5640_JD_NOT_INV		BIT(16)
 #define BYT_RT5640_MONO_SPEAKER		BIT(17)
 #define BYT_RT5640_DIFF_MIC		BIT(18) /* default is single-ended */
 #define BYT_RT5640_SSP2_AIF2		BIT(19) /* default is using AIF1  */
@@ -81,8 +82,15 @@ enum {
 #define BYT_RT5640_MCLK_EN		BIT(22)
 #define BYT_RT5640_MCLK_25MHZ		BIT(23)
 
-/* in-diff or dmic-pin + jdsrc + ovcd-th + -sf + terminating empty entry */
-#define MAX_NO_PROPS 5
+#define BYTCR_INPUT_DEFAULTS				\
+	(BYT_RT5640_IN3_MAP |				\
+	 BYT_RT5640_JD_SRC_JD1_IN4P |			\
+	 BYT_RT5640_OVCD_TH_2000UA |			\
+	 BYT_RT5640_OVCD_SF_0P75 |			\
+	 BYT_RT5640_DIFF_MIC)
+
+/* in-diff or dmic-pin + jdsrc + ovcd-th + -sf + jd-inv + terminating entry */
+#define MAX_NO_PROPS 6
 
 struct byt_rt5640_private {
 	struct snd_soc_jack jack;
@@ -130,6 +138,8 @@ static void log_quirks(struct device *dev)
 		dev_info(dev, "quirk realtek,over-current-scale-factor %ld\n",
 			 BYT_RT5640_OVCD_SF(byt_rt5640_quirk));
 	}
+	if (byt_rt5640_quirk & BYT_RT5640_JD_NOT_INV)
+		dev_info(dev, "quirk JD_NOT_INV enabled\n");
 	if (byt_rt5640_quirk & BYT_RT5640_MONO_SPEAKER)
 		dev_info(dev, "quirk MONO_SPEAKER enabled\n");
 	if (byt_rt5640_quirk & BYT_RT5640_DIFF_MIC)
@@ -200,14 +210,14 @@ static int byt_rt5640_prepare_and_enable_pll1(struct snd_soc_dai *codec_dai,
 	}
 
 	if (ret < 0) {
-		dev_err(codec_dai->codec->dev, "can't set pll: %d\n", ret);
+		dev_err(codec_dai->component->dev, "can't set pll: %d\n", ret);
 		return ret;
 	}
 
 	ret = snd_soc_dai_set_sysclk(codec_dai, RT5640_SCLK_S_PLL1,
 				     rate * 512, SND_SOC_CLOCK_IN);
 	if (ret < 0) {
-		dev_err(codec_dai->codec->dev, "can't set clock %d\n", ret);
+		dev_err(codec_dai->component->dev, "can't set clock %d\n", ret);
 		return ret;
 	}
 
@@ -387,6 +397,18 @@ static int byt_rt5640_aif1_hw_params(struct snd_pcm_substream *substream,
 
 /* Please keep this list alphabetically sorted */
 static const struct dmi_system_id byt_rt5640_quirk_table[] = {
+	{	/* Acer Iconia Tab 8 W1-810 */
+		.matches = {
+			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "Acer"),
+			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "Iconia W1-810"),
+		},
+		.driver_data = (void *)(BYT_RT5640_DMIC1_MAP |
+					BYT_RT5640_JD_SRC_JD1_IN4P |
+					BYT_RT5640_OVCD_TH_2000UA |
+					BYT_RT5640_OVCD_SF_0P75 |
+					BYT_RT5640_SSP0_AIF1 |
+					BYT_RT5640_MCLK_EN),
+	},
 	{
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
@@ -417,6 +439,18 @@ static const struct dmi_system_id byt_rt5640_quirk_table[] = {
 					BYT_RT5640_MONO_SPEAKER |
 					BYT_RT5640_DIFF_MIC |
 					BYT_RT5640_SSP0_AIF2 |
+					BYT_RT5640_MCLK_EN),
+	},
+	{	/* Chuwi Vi8 (CWI506) */
+		.matches = {
+			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "Insyde"),
+			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "i86"),
+			/* The above are too generic, also match BIOS info */
+			DMI_MATCH(DMI_BIOS_VERSION, "CHUWI.D86JLBNR"),
+		},
+		.driver_data = (void *)(BYTCR_INPUT_DEFAULTS |
+					BYT_RT5640_MONO_SPEAKER |
+					BYT_RT5640_SSP0_AIF1 |
 					BYT_RT5640_MCLK_EN),
 	},
 	{
@@ -458,6 +492,17 @@ static const struct dmi_system_id byt_rt5640_quirk_table[] = {
 					BYT_RT5640_SSP0_AIF1 |
 					BYT_RT5640_MCLK_EN),
 	},
+	{	/* HP Stream 7 */
+		.matches = {
+			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "Hewlett-Packard"),
+			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "HP Stream 7 Tablet"),
+		},
+		.driver_data = (void *)(BYTCR_INPUT_DEFAULTS |
+					BYT_RT5640_MONO_SPEAKER |
+					BYT_RT5640_JD_NOT_INV |
+					BYT_RT5640_SSP0_AIF1 |
+					BYT_RT5640_MCLK_EN),
+	},
 	{	/* I.T.Works TW891 */
 		.matches = {
 			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "To be filled by O.E.M."),
@@ -465,13 +510,79 @@ static const struct dmi_system_id byt_rt5640_quirk_table[] = {
 			DMI_EXACT_MATCH(DMI_BOARD_VENDOR, "To be filled by O.E.M."),
 			DMI_EXACT_MATCH(DMI_BOARD_NAME, "TW891"),
 		},
-		.driver_data = (void *)(BYT_RT5640_IN3_MAP |
-					BYT_RT5640_JD_SRC_JD1_IN4P |
+		.driver_data = (void *)(BYTCR_INPUT_DEFAULTS |
+					BYT_RT5640_MONO_SPEAKER |
+					BYT_RT5640_SSP0_AIF1 |
+					BYT_RT5640_MCLK_EN),
+	},
+	{	/* Lamina I8270 / T701BR.SE */
+		.matches = {
+			DMI_EXACT_MATCH(DMI_BOARD_VENDOR, "Lamina"),
+			DMI_EXACT_MATCH(DMI_BOARD_NAME, "T701BR.SE"),
+		},
+		.driver_data = (void *)(BYTCR_INPUT_DEFAULTS |
+					BYT_RT5640_MONO_SPEAKER |
+					BYT_RT5640_JD_NOT_INV |
+					BYT_RT5640_SSP0_AIF1 |
+					BYT_RT5640_MCLK_EN),
+	},
+	{	/* MSI S100 tablet */
+		.matches = {
+			DMI_EXACT_MATCH(DMI_SYS_VENDOR, "Micro-Star International Co., Ltd."),
+			DMI_EXACT_MATCH(DMI_PRODUCT_NAME, "S100"),
+		},
+		.driver_data = (void *)(BYT_RT5640_IN1_MAP |
+					BYT_RT5640_JD_SRC_JD2_IN4N |
 					BYT_RT5640_OVCD_TH_2000UA |
 					BYT_RT5640_OVCD_SF_0P75 |
 					BYT_RT5640_MONO_SPEAKER |
 					BYT_RT5640_DIFF_MIC |
+					BYT_RT5640_MCLK_EN),
+	},
+	{	/* Pipo W4 */
+		.matches = {
+			DMI_EXACT_MATCH(DMI_BOARD_VENDOR, "AMI Corporation"),
+			DMI_EXACT_MATCH(DMI_BOARD_NAME, "Aptio CRB"),
+			/* The above are too generic, also match BIOS info */
+			DMI_MATCH(DMI_BIOS_VERSION, "V8L_WIN32_CHIPHD"),
+		},
+		.driver_data = (void *)(BYTCR_INPUT_DEFAULTS |
+					BYT_RT5640_MONO_SPEAKER |
 					BYT_RT5640_SSP0_AIF1 |
+					BYT_RT5640_MCLK_EN),
+	},
+	{	/* Point of View Mobii TAB-P800W (V2.0) */
+		.matches = {
+			DMI_EXACT_MATCH(DMI_BOARD_VENDOR, "AMI Corporation"),
+			DMI_EXACT_MATCH(DMI_BOARD_NAME, "Aptio CRB"),
+			/* The above are too generic, also match BIOS info */
+			DMI_EXACT_MATCH(DMI_BIOS_VERSION, "3BAIR1014"),
+			DMI_EXACT_MATCH(DMI_BIOS_DATE, "10/24/2014"),
+		},
+		.driver_data = (void *)(BYT_RT5640_IN1_MAP |
+					BYT_RT5640_JD_SRC_JD2_IN4N |
+					BYT_RT5640_OVCD_TH_2000UA |
+					BYT_RT5640_OVCD_SF_0P75 |
+					BYT_RT5640_MONO_SPEAKER |
+					BYT_RT5640_DIFF_MIC |
+					BYT_RT5640_SSP0_AIF2 |
+					BYT_RT5640_MCLK_EN),
+	},
+	{	/* Point of View Mobii TAB-P800W (V2.1) */
+		.matches = {
+			DMI_EXACT_MATCH(DMI_BOARD_VENDOR, "AMI Corporation"),
+			DMI_EXACT_MATCH(DMI_BOARD_NAME, "Aptio CRB"),
+			/* The above are too generic, also match BIOS info */
+			DMI_EXACT_MATCH(DMI_BIOS_VERSION, "3BAIR1013"),
+			DMI_EXACT_MATCH(DMI_BIOS_DATE, "08/22/2014"),
+		},
+		.driver_data = (void *)(BYT_RT5640_IN1_MAP |
+					BYT_RT5640_JD_SRC_JD2_IN4N |
+					BYT_RT5640_OVCD_TH_2000UA |
+					BYT_RT5640_OVCD_SF_0P75 |
+					BYT_RT5640_MONO_SPEAKER |
+					BYT_RT5640_DIFF_MIC |
+					BYT_RT5640_SSP0_AIF2 |
 					BYT_RT5640_MCLK_EN),
 	},
 	{
@@ -499,7 +610,7 @@ static const struct dmi_system_id byt_rt5640_quirk_table[] = {
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "Insyde"),
 		},
-		.driver_data = (void *)(BYT_RT5640_IN3_MAP |
+		.driver_data = (void *)(BYTCR_INPUT_DEFAULTS |
 					BYT_RT5640_MCLK_EN |
 					BYT_RT5640_SSP0_AIF1),
 
@@ -555,6 +666,9 @@ static int byt_rt5640_add_codec_device_props(const char *i2c_dev_name)
 				    "realtek,over-current-scale-factor",
 				    BYT_RT5640_OVCD_SF(byt_rt5640_quirk));
 	}
+
+	if (byt_rt5640_quirk & BYT_RT5640_JD_NOT_INV)
+		props[cnt++] = PROPERTY_ENTRY_BOOL("realtek,jack-detect-not-inverted");
 
 	ret = device_add_properties(i2c_dev, props);
 	put_device(i2c_dev);
@@ -914,7 +1028,7 @@ static int snd_byt_rt5640_mc_probe(struct platform_device *pdev)
 	int i;
 
 	is_bytcr = false;
-	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_ATOMIC);
+	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;
 
@@ -999,10 +1113,12 @@ static int snd_byt_rt5640_mc_probe(struct platform_device *pdev)
 		}
 
 		/* change defaults for Baytrail-CR capture */
-		byt_rt5640_quirk |= BYT_RT5640_IN1_MAP;
-		byt_rt5640_quirk |= BYT_RT5640_DIFF_MIC;
+		byt_rt5640_quirk |= BYTCR_INPUT_DEFAULTS;
 	} else {
-		byt_rt5640_quirk |= BYT_RT5640_DMIC1_MAP;
+		byt_rt5640_quirk |= BYT_RT5640_DMIC1_MAP |
+				    BYT_RT5640_JD_SRC_JD2_IN4N |
+				    BYT_RT5640_OVCD_TH_2000UA |
+				    BYT_RT5640_OVCD_SF_0P75;
 	}
 
 	/* check quirks before creating card */

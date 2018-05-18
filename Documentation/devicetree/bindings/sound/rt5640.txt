@@ -42,6 +42,10 @@ Optional properties:
   5: Use GPIO3 for jack-detect
   6: Use GPIO4 for jack-detect
 
+- realtek,jack-detect-not-inverted
+  bool. Normal jack-detect switches give an inverted signal, set this bool
+  in the rare case you've a jack-detect switch which is not inverted.
+
 - realtek,over-current-threshold-microamp
   u32, micbias over-current detection threshold in µA, valid values are
   600, 1500 and 2000µA.

@@ -1,13 +1,13 @@
 ====================
-firmware_request API
+request_firmware API
 ====================
 
 You would typically load firmware and then load it into your device somehow.
 The typical firmware work flow is reflected below::
 
-	 if(firmware_request(&fw_entry, $FIRMWARE, device) == 0)
+	 if(request_firmware(&fw_entry, $FIRMWARE, device) == 0)
                 copy_fw_to_device(fw_entry->data, fw_entry->size);
-	 firmware_release(fw_entry);
+	 release_firmware(fw_entry);
 
 Synchronous firmware requests
 =============================
@@ -15,25 +15,25 @@ Synchronous firmware requests
 Synchronous firmware requests will wait until the firmware is found or until
 an error is returned.
 
-firmware_request
+request_firmware
 ----------------
 .. kernel-doc:: drivers/base/firmware_loader/main.c
-   :functions: firmware_request
+   :functions: request_firmware
 
 firmware_request_nowarn
 -----------------------
 .. kernel-doc:: drivers/base/firmware_loader/main.c
    :functions: firmware_request_nowarn
 
-firmware_request_direct
+request_firmware_direct
 -----------------------
 .. kernel-doc:: drivers/base/firmware_loader/main.c
-   :functions: firmware_request_direct
+   :functions: request_firmware_direct
 
-firmware_request_into_buf
+request_firmware_into_buf
 -------------------------
 .. kernel-doc:: drivers/base/firmware_loader/main.c
-   :functions: firmware_request_into_buf
+   :functions: request_firmware_into_buf
 
 Asynchronous firmware requests
 ==============================
@@ -41,13 +41,13 @@ Asynchronous firmware requests
 Asynchronous firmware requests allow driver code to not have to wait
 until the firmware or an error is returned. Function callbacks are
 provided so that when the firmware or an error is found the driver is
-informed through the callback. firmware_request_nowait() cannot be called
+informed through the callback. request_firmware_nowait() cannot be called
 in atomic contexts.
 
-firmware_request_nowait
+request_firmware_nowait
 -----------------------
 .. kernel-doc:: drivers/base/firmware_loader/main.c
-   :functions: firmware_request_nowait
+   :functions: request_firmware_nowait
 
 Special optimizations on reboot
 ===============================
@@ -67,11 +67,11 @@ request firmware API expected driver use
 ========================================
 
 Once an API call returns you process the firmware and then release the
-firmware. For example if you used firmware_request() and it returns,
+firmware. For example if you used request_firmware() and it returns,
 the driver has the firmware image accessible in fw_entry->{data,size}.
-If something went wrong firmware_request() returns non-zero and fw_entry
+If something went wrong request_firmware() returns non-zero and fw_entry
 is set to NULL. Once your driver is done with processing the firmware it
-can call call firmware_release(fw_entry) to release the firmware image
+can call call release_firmware(fw_entry) to release the firmware image
 and any related resource.
 
 EFI embedded firmware support
@@ -139,3 +139,13 @@ Note that:
 3. ATM the EFI embedded-fw code only works on x86 because other archs free
    EFI_BOOT_SERVICES_CODE before the EFI embedded-fw code gets a chance to
    scan it.
+
+4. The current brute-force scanning of EFI_BOOT_SERVICES_CODE is an ad-hoc
+   brute-force solution. There has been discussion to use the PI spec's
+   Firmware Volume protocol. This has been rejected because the FV Protocol
+   relies on *internal* interfaces of PI spec, and:
+   1. The The PI spec does not define firmware at all
+   2. The internal interfaces of PI Spec does not guarantee any backward
+      compatibility. Any implementation details in FV may be subject to change,
+      and may vary system to system. Supporting the FV Protocol would be
+      difficult as it is purposely ambiguous.

@@ -43,7 +43,7 @@ static const struct ts_dmi_data cube_iwork8_air_data = {
 		.name	= "silead/gsl3670-cube-iwork8-air.fw",
 		.prefix = { 0xf0, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00 },
 		.length	= 38808,
-		.crc	= 0xfecde51f,
+		.sha256	= { 0 } //FIXME,
 	},
 	.acpi_name	= "MSSL1680:00",
 	.properties	= cube_iwork8_air_props,
@@ -138,13 +138,30 @@ static const struct ts_dmi_data pipo_w2s_data = {
 		.name	= "silead/gsl1680-pipo-w2s.fw",
 		.prefix = { 0xf0, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00 },
 		.length	= 39072,
-		.crc	= 0x28d5dc6c,
+		.sha256	= { 0 } //FIXME,
 	},
 	.acpi_name	= "MSSL1680:00",
 	.properties	= pipo_w2s_props,
 };
 
-static const struct property_entry pov_mobii_wintab_p800w_props[] = {
+static const struct property_entry pov_mobii_wintab_p800w_v20_props[] = {
+	PROPERTY_ENTRY_U32("silead,min-x", 32),
+	PROPERTY_ENTRY_U32("silead,min-y", 16),
+	PROPERTY_ENTRY_U32("touchscreen-size-x", 1660),
+	PROPERTY_ENTRY_U32("touchscreen-size-y", 1130),
+	PROPERTY_ENTRY_BOOL("touchscreen-swapped-x-y"),
+	PROPERTY_ENTRY_STRING("firmware-name",
+			      "gsl3680-pov-mobii-wintab-p800w-v20.fw"),
+	PROPERTY_ENTRY_BOOL("silead,home-button"),
+	{ }
+};
+
+static const struct ts_dmi_data pov_mobii_wintab_p800w_v20_data = {
+	.acpi_name	= "MSSL1680:00",
+	.properties	= pov_mobii_wintab_p800w_v20_props,
+};
+
+static const struct property_entry pov_mobii_wintab_p800w_v21_props[] = {
 	PROPERTY_ENTRY_U32("touchscreen-size-x", 1800),
 	PROPERTY_ENTRY_U32("touchscreen-size-y", 1150),
 	PROPERTY_ENTRY_BOOL("touchscreen-swapped-x-y"),
@@ -154,9 +171,9 @@ static const struct property_entry pov_mobii_wintab_p800w_props[] = {
 	{ }
 };
 
-static const struct ts_dmi_data pov_mobii_wintab_p800w_data = {
+static const struct ts_dmi_data pov_mobii_wintab_p800w_v21_data = {
 	.acpi_name	= "MSSL1680:00",
-	.properties	= pov_mobii_wintab_p800w_props,
+	.properties	= pov_mobii_wintab_p800w_v21_props,
 };
 
 static const struct property_entry itworks_tw891_props[] = {
@@ -188,7 +205,7 @@ static const struct ts_dmi_data chuwi_hi8_pro_data = {
 		.name	= "silead/gsl3680-chuwi-hi8-pro.fw",
 		.prefix = { 0xf0, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00 },
 		.length	= 39864,
-		.crc	= 0xfe2bedba,
+		.sha256	= { 0 } //FIXME,
 	},
 	.acpi_name	= "MSSL1680:00",
 	.properties	= chuwi_hi8_pro_props,
@@ -311,7 +328,7 @@ static const struct ts_dmi_data chuwi_vi8_plus_data = {
 		.name	= "chipone/icn8505-HAMP0002.fw",
 		.prefix = { 0xb0, 0x07, 0x00, 0x00, 0xe4, 0x07, 0x00, 0x00 },
 		.length	= 35012,
-		.crc	= 0x74dfd3fc,
+		.sha256	= { 0 } //FIXME,
 	},
 	.acpi_name	= "CHPN0001:00",
 	.properties	= efi_embedded_fw_props,
@@ -401,8 +418,19 @@ const struct dmi_system_id touchscreen_dmi_table[] = {
 		},
 	},
 	{
-		/* Point of View mobii wintab p800w */
-		.driver_data = (void *)&pov_mobii_wintab_p800w_data,
+		/* Point of View mobii wintab p800w (v2.0) */
+		.driver_data = (void *)&pov_mobii_wintab_p800w_v20_data,
+		.matches = {
+			DMI_MATCH(DMI_BOARD_VENDOR, "AMI Corporation"),
+			DMI_MATCH(DMI_BOARD_NAME, "Aptio CRB"),
+			DMI_MATCH(DMI_BIOS_VERSION, "3BAIR1014"),
+			/* Above matches are too generic, add bios-date match */
+			DMI_MATCH(DMI_BIOS_DATE, "10/24/2014"),
+		},
+	},
+	{
+		/* Point of View mobii wintab p800w (v2.1) */
+		.driver_data = (void *)&pov_mobii_wintab_p800w_v21_data,
 		.matches = {
 			DMI_MATCH(DMI_BOARD_VENDOR, "AMI Corporation"),
 			DMI_MATCH(DMI_BOARD_NAME, "Aptio CRB"),
