@@ -145,6 +145,26 @@ static int device_reorder_to_tail(struct device *dev, void *not_used)
 }
 
 /**
+ * device_pm_move_to_tail - Move set of devices to the end of device lists
+ * @dev: Device to move
+ *
+ * This is a device_reorder_to_tail() wrapper taking the requisite locks.
+ *
+ * It moves the @dev along with all of its children and all of its consumers
+ * to the ends of the device_kset and dpm_list, recursively.
+ */
+void device_pm_move_to_tail(struct device *dev)
+{
+	int idx;
+
+	idx = device_links_read_lock();
+	device_pm_lock();
+	device_reorder_to_tail(dev, NULL);
+	device_pm_unlock();
+	device_links_read_unlock(idx);
+}
+
+/**
  * device_link_add - Create a link between two devices.
  * @consumer: Consumer end of the link.
  * @supplier: Supplier end of the link.
@@ -216,6 +236,13 @@ struct device_link *device_link_add(struct device *consumer,
 			link->rpm_active = true;
 		}
 		pm_runtime_new_link(consumer);
+		/*
+		 * If the link is being added by the consumer driver at probe
+		 * time, balance the decrementation of the supplier's runtime PM
+		 * usage counter after consumer probe in driver_probe_device().
+		 */
+		if (consumer->links.status == DL_DEV_PROBING)
+			pm_runtime_get_noresume(supplier);
 	}
 	get_device(supplier);
 	link->supplier = supplier;
@@ -235,12 +262,12 @@ struct device_link *device_link_add(struct device *consumer,
 			switch (consumer->links.status) {
 			case DL_DEV_PROBING:
 				/*
-				 * Balance the decrementation of the supplier's
-				 * runtime PM usage counter after consumer probe
-				 * in driver_probe_device().
+				 * Some callers expect the link creation during
+				 * consumer driver probe to resume the supplier
+				 * even without DL_FLAG_RPM_ACTIVE.
 				 */
 				if (flags & DL_FLAG_PM_RUNTIME)
-					pm_runtime_get_sync(supplier);
+					pm_runtime_resume(supplier);
 
 				link->status = DL_STATE_CONSUMER_PROBE;
 				break;
@@ -2411,7 +2438,7 @@ static void device_create_release(struct device *dev)
 	kfree(dev);
 }
 
-static struct device *
+static __printf(6, 0) struct device *
 device_create_groups_vargs(struct class *class, struct device *parent,
 			   dev_t devt, void *drvdata,
 			   const struct attribute_group **groups,
@@ -2689,7 +2716,7 @@ static int device_move_class_links(struct device *dev,
 /**
  * device_move - moves a device to a new parent
  * @dev: the pointer to the struct device to be moved
- * @new_parent: the new parent of the device (can by NULL)
+ * @new_parent: the new parent of the device (can be NULL)
  * @dpm_order: how to reorder the dpm_list
  */
 int device_move(struct device *dev, struct device *new_parent,
