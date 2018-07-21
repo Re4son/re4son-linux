@@ -1,24 +1,24 @@
-/****************************************************************************** 
-* 
-* Copyright(c) 2007 - 2011 Realtek Corporation. All rights reserved. 
-* 
-* This program is free software; you can redistribute it and/or modify it 
-* under the terms of version 2 of the GNU General Public License as 
-* published by the Free Software Foundation. 
-* 
-* This program is distributed in the hope that it will be useful, but WITHOUT 
-* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or 
-* FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for 
-* more details. 
-* 
-* You should have received a copy of the GNU General Public License along with 
-* this program; if not, write to the Free Software Foundation, Inc., 
-* 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA 
-* 
-* 
+/******************************************************************************
+*
+* Copyright(c) 2007 - 2011 Realtek Corporation. All rights reserved.
+*
+* This program is free software; you can redistribute it and/or modify it
+* under the terms of version 2 of the GNU General Public License as
+* published by the Free Software Foundation.
+*
+* This program is distributed in the hope that it will be useful, but WITHOUT
+* ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+* FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+* more details.
+*
+* You should have received a copy of the GNU General Public License along with
+* this program; if not, write to the Free Software Foundation, Inc.,
+* 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
+*
+*
 ******************************************************************************/
 
-/*Image2HeaderVersion: 2.11*/
+/*Image2HeaderVersion: 2.16*/
 #include "mp_precomp.h"
 #include "../phydm_precomp.h"
 
@@ -26,11 +26,13 @@
 #include "../../rtl8812a/hal8821a_fw.h"
 #endif
 
+
 #if (RTL8821A_SUPPORT == 1)
 #if (defined(CONFIG_AP_WOWLAN) || (DM_ODM_SUPPORT_TYPE & (ODM_AP)))
 
+
 #ifndef LOAD_FW_HEADER_FROM_DRIVER
-u1Byte Array_MP_8821A_FW_AP[] = {
+u8 array_mp_8821a_fw_ap[] = {
 0x01, 0x21, 0x20, 0x00, 0x24, 0x00, 0x00, 0x00, 0x06, 0x18, 0x15, 0x06, 0x10, 0x40, 0x00, 0x00, 
 0x7A, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
 0x02, 0x47, 0x5D, 0x02, 0x5F, 0xF9, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
@@ -1060,22 +1062,23 @@ u1Byte Array_MP_8821A_FW_AP[] = {
 0xA3, 0xF0, 0x90, 0xA5, 0x0F, 0x22, 0x54, 0x03, 0x4F, 0xFF, 0x75, 0xF0, 0x10, 0x22, 0x07, 0xEC, 
 
 };
-u4Byte ArrayLength_MP_8821A_FW_AP = 16432;
+u32 array_length_mp_8821a_fw_ap = 16432;
+
 #endif
 
 void
-ODM_ReadFirmware_MP_8821A_FW_AP(
-	IN   PDM_ODM_T    pDM_Odm,
-	OUT  u1Byte       *pFirmware,
-	OUT  u4Byte       *pFirmwareSize
+odm_read_firmware_mp_8821a_fw_ap(
+	struct PHY_DM_STRUCT    *p_dm_odm,
+	u8       *p_firmware,
+	u32       *p_firmware_size
 )
 {
 #if (DM_ODM_SUPPORT_TYPE & (ODM_CE))
-	*((SIZE_PTR *)pFirmware) = (SIZE_PTR)Array_MP_8821A_FW_AP;
+	*((SIZE_PTR *)p_firmware) = (SIZE_PTR)array_mp_8821a_fw_ap;
 #else
-	ODM_MoveMemory(pDM_Odm, pFirmware, Array_MP_8821A_FW_AP, ArrayLength_MP_8821A_FW_AP);
+	odm_move_memory(p_dm_odm, p_firmware, array_mp_8821a_fw_ap, array_length_mp_8821a_fw_ap);
 #endif
-	*pFirmwareSize = ArrayLength_MP_8821A_FW_AP;
+	*p_firmware_size = array_length_mp_8821a_fw_ap;
 }
 
 
@@ -1085,7 +1088,7 @@ ODM_ReadFirmware_MP_8821A_FW_AP(
 #if (DM_ODM_SUPPORT_TYPE & (ODM_WIN)) || (DM_ODM_SUPPORT_TYPE & (ODM_CE))
 
 #ifndef LOAD_FW_HEADER_FROM_DRIVER
-u1Byte Array_MP_8821A_FW_NIC[] = {
+u8 array_mp_8821a_fw_nic[] = {
 0x01, 0x21, 0x10, 0x00, 0x24, 0x00, 0x00, 0x00, 0x06, 0x18, 0x15, 0x06, 0x2E, 0x6B, 0x00, 0x00, 
 0x7A, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
 0x02, 0x48, 0x4E, 0x02, 0x77, 0xF1, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
@@ -2804,26 +2807,28 @@ u1Byte Array_MP_8821A_FW_NIC[] = {
 0x0A, 0xE0, 0x22, 0x90, 0x89, 0x04, 0x12, 0x48, 0x0A, 0xE0, 0x22, 0x74, 0x01, 0x7E, 0x00, 0xA8, 
 0x70, 0x08, 0x22, 0x54, 0x03, 0x4F, 0xFF, 0x75, 0xF0, 0x10, 0x22, 0x00, 0x0B, 0x0D, 
 };
-u4Byte ArrayLength_MP_8821A_FW_NIC = 27470;
+u32 array_length_mp_8821a_fw_nic = 27470;
+
+
 #endif
 
 void
-ODM_ReadFirmware_MP_8821A_FW_NIC(
-	IN   PDM_ODM_T    pDM_Odm,
-	OUT  u1Byte       *pFirmware,
-	OUT  u4Byte       *pFirmwareSize
+odm_read_firmware_mp_8821a_fw_nic(
+	struct PHY_DM_STRUCT    *p_dm_odm,
+	u8       *p_firmware,
+	u32       *p_firmware_size
 )
 {
 #if (DM_ODM_SUPPORT_TYPE & (ODM_CE))
-	*((SIZE_PTR *)pFirmware) = (SIZE_PTR)Array_MP_8821A_FW_NIC;
+	*((SIZE_PTR *)p_firmware) = (SIZE_PTR)array_mp_8821a_fw_nic;
 #else
-	ODM_MoveMemory(pDM_Odm, pFirmware, Array_MP_8821A_FW_NIC, ArrayLength_MP_8821A_FW_NIC);
+	odm_move_memory(p_dm_odm, p_firmware, array_mp_8821a_fw_nic, array_length_mp_8821a_fw_nic);
 #endif
-	*pFirmwareSize = ArrayLength_MP_8821A_FW_NIC;
+	*p_firmware_size = array_length_mp_8821a_fw_nic;
 }
 
 #ifndef LOAD_FW_HEADER_FROM_DRIVER
-u1Byte Array_MP_8821A_FW_NIC_BT[] = {
+u8 array_mp_8821a_fw_nic_bt[] = {
 0x01, 0x21, 0x13, 0x00, 0x24, 0x00, 0x00, 0x00, 0x06, 0x18, 0x15, 0x07, 0xCC, 0x7F, 0x00, 0x00, 
 0x7A, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
 0x02, 0x47, 0xF2, 0x02, 0x6F, 0xEA, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
@@ -4872,27 +4877,27 @@ u1Byte Array_MP_8821A_FW_NIC_BT[] = {
 0xA3, 0x22, 0x4D, 0xFF, 0x90, 0xA1, 0x41, 0xF0, 0xEE, 0x22, 0x90, 0xA3, 0xBA, 0x12, 0x47, 0x96, 
 0xEF, 0x22, 0x90, 0xA3, 0xDF, 0xE0, 0x90, 0xA1, 0x63, 0x22, 0x06, 0xC1, 
 };
-u4Byte ArrayLength_MP_8821A_FW_NIC_BT = 32748;
+u32 array_length_mp_8821a_fw_nic_bt = 32748;
+
 #endif
 
 void
-ODM_ReadFirmware_MP_8821A_FW_NIC_BT(
-	IN   PDM_ODM_T    pDM_Odm,
-	OUT  u1Byte       *pFirmware,
-	OUT  u4Byte       *pFirmwareSize
+odm_read_firmware_mp_8821a_fw_nic_bt(
+	struct PHY_DM_STRUCT    *p_dm_odm,
+	u8       *p_firmware,
+	u32       *p_firmware_size
 )
 {
 #if (DM_ODM_SUPPORT_TYPE & (ODM_CE))
-	*((SIZE_PTR *)pFirmware) = (SIZE_PTR)Array_MP_8821A_FW_NIC_BT;
+	*((SIZE_PTR *)p_firmware) = (SIZE_PTR)array_mp_8821a_fw_nic_bt;
 #else
-	ODM_MoveMemory(pDM_Odm, pFirmware, Array_MP_8821A_FW_NIC_BT, ArrayLength_MP_8821A_FW_NIC_BT);
+	odm_move_memory(p_dm_odm, p_firmware, array_mp_8821a_fw_nic_bt, array_length_mp_8821a_fw_nic_bt);
 #endif
-	*pFirmwareSize = ArrayLength_MP_8821A_FW_NIC_BT;
+	*p_firmware_size = array_length_mp_8821a_fw_nic_bt;
 }
 
-
 #ifndef LOAD_FW_HEADER_FROM_DRIVER
-u1Byte Array_MP_8821A_FW_WoWLAN[] = {
+u8 array_mp_8821a_fw_wowlan[] = {
 0x01, 0x21, 0x30, 0x00, 0x24, 0x00, 0x00, 0x00, 0x06, 0x18, 0x15, 0x06, 0x1A, 0x6B, 0x00, 0x00, 
 0x7A, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
 0x02, 0x49, 0xF8, 0x02, 0x68, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
@@ -6610,22 +6615,23 @@ u1Byte Array_MP_8821A_FW_WoWLAN[] = {
 0x90, 0x8E, 0xB2, 0xE0, 0xFF, 0xC3, 0x13, 0x22, 0x7E, 0x00, 0x7F, 0x10, 0x02, 0x06, 0x63, 0x2F, 
 0xF8, 0xE6, 0xFE, 0xED, 0xF4, 0x5E, 0x22, 0x00, 0x4D, 0x48, 
 };
-u4Byte ArrayLength_MP_8821A_FW_WoWLAN = 27450;
+u32 array_length_mp_8821a_fw_wowlan = 27450;
+
 #endif
 
 void
-ODM_ReadFirmware_MP_8821A_FW_WoWLAN(
-	IN   PDM_ODM_T    pDM_Odm,
-	OUT  u1Byte       *pFirmware,
-	OUT  u4Byte       *pFirmwareSize
+odm_read_firmware_mp_8821a_fw_wowlan(
+	struct PHY_DM_STRUCT    *p_dm_odm,
+	u8       *p_firmware,
+	u32       *p_firmware_size
 )
 {
 #if (DM_ODM_SUPPORT_TYPE & (ODM_CE))
-	*((SIZE_PTR *)pFirmware) = (SIZE_PTR)Array_MP_8821A_FW_WoWLAN;
+	*((SIZE_PTR *)p_firmware) = (SIZE_PTR)array_mp_8821a_fw_wowlan;
 #else
-	ODM_MoveMemory(pDM_Odm, pFirmware, Array_MP_8821A_FW_WoWLAN, ArrayLength_MP_8821A_FW_WoWLAN);
+	odm_move_memory(p_dm_odm, p_firmware, array_mp_8821a_fw_wowlan, array_length_mp_8821a_fw_wowlan);
 #endif
-	*pFirmwareSize = ArrayLength_MP_8821A_FW_WoWLAN;
+	*p_firmware_size = array_length_mp_8821a_fw_wowlan;
 }
 
 

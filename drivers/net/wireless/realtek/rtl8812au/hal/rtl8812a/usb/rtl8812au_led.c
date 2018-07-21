@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- * Copyright(c) 2007 - 2011 Realtek Corporation. All rights reserved.
+ * Copyright(c) 2007 - 2017 Realtek Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as
@@ -11,16 +11,12 @@
  * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
- *
- *
- ******************************************************************************/
+ *****************************************************************************/
 #define _RTL8812AU_LED_C_
 
 /* #include <drv_types.h> */
 #include <rtl8812a_hal.h>
+#ifdef CONFIG_RTW_SW_LED
 
 /* ********************************************************************************
  * LED object.
@@ -204,6 +200,7 @@ SwLedOn_8821AU(
 )
 {
 	u8	LedCfg;
+	u32	gpio8_cfg;
 
 	if (RTW_CANNOT_RUN(Adapter))
 		return;
@@ -240,8 +237,11 @@ SwLedOn_8821AU(
 		case LED_PIN_LED1:
 		case LED_PIN_LED2:
 			if (IS_HARDWARE_TYPE_8821U(Adapter)) {
-				LedCfg = rtw_read8(Adapter, REG_LEDCFG2) & 0x20;
-				rtw_write8(Adapter, REG_LEDCFG2, (LedCfg & ~(BIT3)) | BIT5); /* SW control led0 on. */
+				LedCfg = rtw_read8(Adapter, REG_LEDCFG2) & 0xc0; /* Keep 0x4c [22:23] */
+				gpio8_cfg = rtw_read32(Adapter, REG_GPIO_PIN_CTRL_2);
+				/*0x4c[21] = 0, 0x60[24] = 0, 0x60[16] = 1, 0x60[8] = 0 , use 0x60[16]  control LED , suggert by SD1 Jong*/
+				rtw_write8(Adapter, REG_LEDCFG2, LedCfg);
+				rtw_write32(Adapter, REG_GPIO_PIN_CTRL_2 , ((gpio8_cfg | BIT16) & (~BIT8) & (~BIT24)));
 				/* RTW_INFO("8821 SwLedOn LED2 0x%x\n", rtw_read32(Adapter, REG_LEDCFG0)); */
 			}
 
@@ -267,6 +267,7 @@ SwLedOff_8821AU(
 {
 	HAL_DATA_TYPE *pHalData = GET_HAL_DATA(Adapter);
 	u8	LedCfg;
+	u32	gpio8_cfg;
 
 	if (RTW_CANNOT_RUN(Adapter))
 		return;
@@ -314,9 +315,9 @@ SwLedOff_8821AU(
 		case LED_PIN_LED1:
 		case LED_PIN_LED2:
 			if (IS_HARDWARE_TYPE_8821U(Adapter)) {
-				LedCfg = rtw_read8(Adapter, REG_LEDCFG2);
-				LedCfg &= 0x20; /* Set to software control. */
-				rtw_write8(Adapter, REG_LEDCFG2, (LedCfg | BIT3 | BIT5));
+				/*0x4c[21] = 0, 0x60[24] = 0, 0x60[16] = 0, 0x60[8] = 0 , use 0x60[16]  control LED ,  suggert by SD1 Jong*/
+				gpio8_cfg = rtw_read32(Adapter, REG_GPIO_PIN_CTRL_2);
+				rtw_write32(Adapter, REG_GPIO_PIN_CTRL_2 , (gpio8_cfg & (~BIT16) & (~BIT8) & (~BIT24)));
 				/* RTW_INFO("8821 SwLedOn LED2 0x%x\n", rtw_read32(Adapter, REG_LEDCFG0)); */
 			}
 
@@ -385,3 +386,4 @@ rtl8812au_DeInitSwLeds(
 	DeInitLed(&(ledpriv->SwLed1));
 	DeInitLed(&(ledpriv->SwLed2));
 }
+#endif

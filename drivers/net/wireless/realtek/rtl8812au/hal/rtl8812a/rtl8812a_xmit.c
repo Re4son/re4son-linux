@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- * Copyright(c) 2007 - 2011 Realtek Corporation. All rights reserved.
+ * Copyright(c) 2007 - 2017 Realtek Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as
@@ -11,52 +11,12 @@
  * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
- *
- *
- ******************************************************************************/
+ *****************************************************************************/
 #define _RTL8812A_XMIT_C_
 
 /* #include <drv_types.h> */
 #include <rtl8812a_hal.h>
 
-void _dbg_dump_tx_info(_adapter	*padapter, int frame_tag, u8 *ptxdesc)
-{
-	u8 bDumpTxPkt;
-	u8 bDumpTxDesc = _FALSE;
-	rtw_hal_get_def_var(padapter, HAL_DEF_DBG_DUMP_TXPKT, &(bDumpTxPkt));
-
-	if (bDumpTxPkt == 1) { /* dump txdesc for data frame */
-		RTW_INFO("dump tx_desc for data frame\n");
-		if ((frame_tag & 0x0f) == DATA_FRAMETAG)
-			bDumpTxDesc = _TRUE;
-	} else if (bDumpTxPkt == 2) { /* dump txdesc for mgnt frame */
-		RTW_INFO("dump tx_desc for mgnt frame\n");
-		if ((frame_tag & 0x0f) == MGNT_FRAMETAG)
-			bDumpTxDesc = _TRUE;
-	} else if (bDumpTxPkt == 3) { /* dump early info */
-	}
-
-	if (bDumpTxDesc) {
-		/* ptxdesc->txdw4 = cpu_to_le32(0x00001006); */ /* RTS Rate=24M */
-		/*	ptxdesc->txdw6 = 0x6666f800; */
-		RTW_INFO("=====================================\n");
-		RTW_INFO("Offset00(0x%08x)\n", *((u32 *)(ptxdesc)));
-		RTW_INFO("Offset04(0x%08x)\n", *((u32 *)(ptxdesc + 4)));
-		RTW_INFO("Offset08(0x%08x)\n", *((u32 *)(ptxdesc + 8)));
-		RTW_INFO("Offset12(0x%08x)\n", *((u32 *)(ptxdesc + 12)));
-		RTW_INFO("Offset16(0x%08x)\n", *((u32 *)(ptxdesc + 16)));
-		RTW_INFO("Offset20(0x%08x)\n", *((u32 *)(ptxdesc + 20)));
-		RTW_INFO("Offset24(0x%08x)\n", *((u32 *)(ptxdesc + 24)));
-		RTW_INFO("Offset28(0x%08x)\n", *((u32 *)(ptxdesc + 28)));
-		RTW_INFO("Offset32(0x%08x)\n", *((u32 *)(ptxdesc + 32)));
-		RTW_INFO("Offset36(0x%08x)\n", *((u32 *)(ptxdesc + 36)));
-		RTW_INFO("=====================================\n");
-	}
-
-}
 
 /*
  * Description:
@@ -355,6 +315,12 @@ void fill_txdesc_force_bmc_camid(struct pkt_attrib *pattrib, u8 *ptxdesc)
 	}
 }
 #endif
+void fill_txdesc_bmc_tx_rate(struct pkt_attrib *pattrib, u8 *ptxdesc)
+{
+	SET_TX_DESC_USE_RATE_8812(ptxdesc, 1);
+	SET_TX_DESC_TX_RATE_8812(ptxdesc, MRateToHwRate(pattrib->rate));
+	SET_TX_DESC_DISABLE_FB_8812(ptxdesc, 1);
+}
 
 void rtl8812a_fill_txdesc_sectype(struct pkt_attrib *pattrib, u8 *ptxdesc)
 {
@@ -441,16 +407,16 @@ BWMapping_8812(
 	u8	BWSettingOfDesc = 0;
 	PHAL_DATA_TYPE	pHalData = GET_HAL_DATA(Adapter);
 
-	/* RTW_INFO("BWMapping pHalData->CurrentChannelBW %d, pattrib->bwmode %d\n",pHalData->CurrentChannelBW,pattrib->bwmode); */
+	/* RTW_INFO("BWMapping pHalData->current_channel_bw %d, pattrib->bwmode %d\n",pHalData->current_channel_bw,pattrib->bwmode); */
 
-	if (pHalData->CurrentChannelBW == CHANNEL_WIDTH_80) {
+	if (pHalData->current_channel_bw == CHANNEL_WIDTH_80) {
 		if (pattrib->bwmode == CHANNEL_WIDTH_80)
 			BWSettingOfDesc = 2;
 		else if (pattrib->bwmode == CHANNEL_WIDTH_40)
 			BWSettingOfDesc = 1;
 		else
 			BWSettingOfDesc = 0;
-	} else if (pHalData->CurrentChannelBW == CHANNEL_WIDTH_40) {
+	} else if (pHalData->current_channel_bw == CHANNEL_WIDTH_40) {
 		if ((pattrib->bwmode == CHANNEL_WIDTH_40) || (pattrib->bwmode == CHANNEL_WIDTH_80))
 			BWSettingOfDesc = 1;
 		else
@@ -469,9 +435,9 @@ SCMapping_8812(
 {
 	u8	SCSettingOfDesc = 0;
 	PHAL_DATA_TYPE	pHalData = GET_HAL_DATA(Adapter);
-	/* RTW_INFO("SCMapping: pHalData->CurrentChannelBW %d, pHalData->nCur80MhzPrimeSC %d, pHalData->nCur40MhzPrimeSC %d\n",pHalData->CurrentChannelBW,pHalData->nCur80MhzPrimeSC,pHalData->nCur40MhzPrimeSC); */
+	/* RTW_INFO("SCMapping: pHalData->current_channel_bw %d, pHalData->nCur80MhzPrimeSC %d, pHalData->nCur40MhzPrimeSC %d\n",pHalData->current_channel_bw,pHalData->nCur80MhzPrimeSC,pHalData->nCur40MhzPrimeSC); */
 
-	if (pHalData->CurrentChannelBW == CHANNEL_WIDTH_80) {
+	if (pHalData->current_channel_bw == CHANNEL_WIDTH_80) {
 		if (pattrib->bwmode == CHANNEL_WIDTH_80)
 			SCSettingOfDesc = VHT_DATA_SC_DONOT_CARE;
 		else if (pattrib->bwmode == CHANNEL_WIDTH_40) {
@@ -493,8 +459,8 @@ SCMapping_8812(
 			else
 				RTW_INFO("SCMapping: DONOT CARE Mode Setting\n");
 		}
-	} else if (pHalData->CurrentChannelBW == CHANNEL_WIDTH_40) {
-		/* RTW_INFO("SCMapping: HT Case: pHalData->CurrentChannelBW %d, pHalData->nCur40MhzPrimeSC %d\n",pHalData->CurrentChannelBW,pHalData->nCur40MhzPrimeSC); */
+	} else if (pHalData->current_channel_bw == CHANNEL_WIDTH_40) {
+		/* RTW_INFO("SCMapping: HT Case: pHalData->current_channel_bw %d, pHalData->nCur40MhzPrimeSC %d\n",pHalData->current_channel_bw,pHalData->nCur40MhzPrimeSC); */
 
 		if (pattrib->bwmode == CHANNEL_WIDTH_40)
 			SCSettingOfDesc = VHT_DATA_SC_DONOT_CARE;

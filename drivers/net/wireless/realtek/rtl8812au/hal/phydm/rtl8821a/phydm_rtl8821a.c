@@ -1,7 +1,7 @@
 /******************************************************************************
  *
  * Copyright(c) 2007 - 2011 Realtek Corporation. All rights reserved.
- *                                        
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as
  * published by the Free Software Foundation.
@@ -18,9 +18,9 @@
  *
  ******************************************************************************/
 
-//============================================================
-// include files
-//============================================================
+/* ************************************************************
+ * include files
+ * ************************************************************ */
 
 #include "mp_precomp.h"
 
@@ -28,42 +28,39 @@
 
 #if (RTL8821A_SUPPORT == 1)
 
-VOID
-odm_DynamicTryStateAgg_8821A(
-	IN		PDM_ODM_T		pDM_Odm
+void odm_dynamic_try_state_agg_8821a(
+	struct PHY_DM_STRUCT		*p_dm_odm
 	)
 {
-	if ((pDM_Odm->SupportICType & ODM_RTL8821) && (pDM_Odm->SupportInterface == ODM_ITRF_USB)) {
-		if(pDM_Odm->RSSI_Min > 25)
-			ODM_Write1Byte(pDM_Odm, 0x4CF, 0x02);
-		else if(pDM_Odm->RSSI_Min < 20)
-			ODM_Write1Byte(pDM_Odm, 0x4CF, 0x00);
+	if ((p_dm_odm->support_ic_type & ODM_RTL8821) && (p_dm_odm->support_interface == ODM_ITRF_USB)) {
+		if(p_dm_odm->rssi_min > 25)
+			odm_write_1byte(p_dm_odm, 0x4CF, 0x02);
+		else if(p_dm_odm->rssi_min < 20)
+			odm_write_1byte(p_dm_odm, 0x4CF, 0x00);
 	}
 }
 
-VOID
-odm_DynamicPacketdetectionTH_8821A(
-	IN		PDM_ODM_T		pDM_Odm
+void odm_dynamic_packet_detection_th_8821a(
+	struct PHY_DM_STRUCT	*p_dm_odm
 	)
 {
-	if (pDM_Odm->SupportICType & ODM_RTL8821) {
-		if (pDM_Odm->RSSI_Min <= 25) {
-			ODM_SetBBReg(pDM_Odm, rPwed_TH_Jaguar, bMaskDWord, 0x2aaaf1a8);
-			ODM_SetBBReg(pDM_Odm, rBWIndication_Jaguar, BIT26, 1);
-		} else if (pDM_Odm->RSSI_Min >= 30) {
-			ODM_SetBBReg(pDM_Odm, rPwed_TH_Jaguar, bMaskDWord, 0x2aaaeec8);
-			ODM_SetBBReg(pDM_Odm, rBWIndication_Jaguar, BIT26, 0);
+	if (p_dm_odm->support_ic_type & ODM_RTL8821) {
+		if (p_dm_odm->rssi_min <= 25) {
+			odm_set_bb_reg(p_dm_odm, rPwed_TH_Jaguar, bMaskDWord, 0x2aaaf1a8);
+			odm_set_bb_reg(p_dm_odm, rBWIndication_Jaguar, BIT26, 1);
+		} else if (p_dm_odm->rssi_min >= 30) {
+			odm_set_bb_reg(p_dm_odm, rPwed_TH_Jaguar, bMaskDWord, 0x2aaaeec8);
+			odm_set_bb_reg(p_dm_odm, rBWIndication_Jaguar, BIT26, 0);
 		}
 	}
 }
 
-VOID
-odm_HWSetting_8821A(
-	IN		PDM_ODM_T		pDM_Odm
+void odm_hw_setting_8821a(
+	struct PHY_DM_STRUCT	*p_dm_odm
 	)
 {
-	odm_DynamicTryStateAgg_8821A(pDM_Odm);
-	odm_DynamicPacketdetectionTH_8821A(pDM_Odm);
+	odm_dynamic_try_state_agg_8821a(p_dm_odm);
+	odm_dynamic_packet_detection_th_8821a(p_dm_odm);
 }
 
 #endif //#if (RTL8821A_SUPPORT == 1)

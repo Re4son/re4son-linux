@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- * Copyright(c) 2007 - 2011 Realtek Corporation. All rights reserved.
+ * Copyright(c) 2007 - 2017 Realtek Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as
@@ -11,12 +11,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
- *
- *
- ******************************************************************************/
+ *****************************************************************************/
 #ifndef __RTL8723B_HAL_H__
 #define __RTL8723B_HAL_H__
 
@@ -125,9 +120,11 @@ typedef struct _RT_8723B_FIRMWARE_HDR {
 #endif
 
 /* For WoWLan , more reserved page
- * ARP Rsp:1, RWC:1, GTK Info:1,GTK RSP:2,GTK EXT MEM:2, PNO: 6 */
+ * ARP Rsp:1, RWC:1, GTK Info:1,GTK RSP:2,GTK EXT MEM:2, AOAC rpt: 1,PNO: 6
+ * NS offload: 2 NDP info: 1
+ */
 #ifdef CONFIG_WOWLAN
-	#define WOWLAN_PAGE_NUM_8723B	0x07
+	#define WOWLAN_PAGE_NUM_8723B	0x0b
 #else
 	#define WOWLAN_PAGE_NUM_8723B	0x00
 #endif
@@ -152,11 +149,13 @@ typedef struct _RT_8723B_FIRMWARE_HDR {
 #define NORMAL_PAGE_NUM_HPQ_8723B		0x0C
 #define NORMAL_PAGE_NUM_LPQ_8723B		0x02
 #define NORMAL_PAGE_NUM_NPQ_8723B		0x02
+#define NORMAL_PAGE_NUM_EPQ_8723B		0x04
 
 /* Note: For Normal Chip Setting, modify later */
 #define WMM_NORMAL_PAGE_NUM_HPQ_8723B		0x30
 #define WMM_NORMAL_PAGE_NUM_LPQ_8723B		0x20
 #define WMM_NORMAL_PAGE_NUM_NPQ_8723B		0x20
+#define WMM_NORMAL_PAGE_NUM_EPQ_8723B		0x00
 
 
 #include "HalVerDef.h"
@@ -186,12 +185,6 @@ typedef struct _RT_8723B_FIRMWARE_HDR {
 #define EFUSE_BT_MAX_SECTION			128		/* 1024/8 */
 
 #define EFUSE_PROTECT_BYTES_BANK		16
-
-typedef struct _C2H_EVT_HDR {
-	u8	CmdID;
-	u8	CmdLen;
-	u8	CmdSeq;
-} __attribute__((__packed__)) C2H_EVT_HDR, *PC2H_EVT_HDR;
 
 typedef enum tag_Package_Definition {
 	PACKAGE_DEFAULT,
@@ -235,18 +228,10 @@ VOID Hal_EfuseParsePackageType_8723B(PADAPTER pAdapter, u8 *hwinfo, BOOLEAN Auto
 VOID Hal_EfuseParseVoltage_8723B(PADAPTER pAdapter, u8 *hwinfo, BOOLEAN	AutoLoadFail);
 VOID Hal_EfuseParseBoardType_8723B(PADAPTER Adapter,	u8	*PROMContent, BOOLEAN AutoloadFail);
 
-#ifdef CONFIG_C2H_PACKET_EN
-	void rtl8723b_c2h_packet_handler(PADAPTER padapter, u8 *pbuf, u16 length);
-#endif
-
-
 void rtl8723b_set_hal_ops(struct hal_ops *pHalFunc);
 void init_hal_spec_8723b(_adapter *adapter);
-void SetHwReg8723B(PADAPTER padapter, u8 variable, u8 *val);
+u8 SetHwReg8723B(PADAPTER padapter, u8 variable, u8 *val);
 void GetHwReg8723B(PADAPTER padapter, u8 variable, u8 *val);
-#ifdef CONFIG_C2H_PACKET_EN
-	void SetHwRegWithBuf8723B(PADAPTER padapter, u8 variable, u8 *pbuf, int len);
-#endif /* CONFIG_C2H_PACKET_EN */
 u8 SetHalDefVar8723B(PADAPTER padapter, HAL_DEF_VARIABLE variable, void *pval);
 u8 GetHalDefVar8723B(PADAPTER padapter, HAL_DEF_VARIABLE variable, void *pval);
 
@@ -276,8 +261,7 @@ void rtl8723b_stop_thread(_adapter *padapter);
 int FirmwareDownloadBT(IN PADAPTER Adapter, PRT_MP_FIRMWARE pFirmware);
 #endif
 void CCX_FwC2HTxRpt_8723b(PADAPTER padapter, u8 *pdata, u8 len);
-s32 c2h_id_filter_ccx_8723b(u8 *buf);
-s32 c2h_handler_8723b(PADAPTER padapter, u8 *pC2hEvent);
+
 u8 MRateToHwRate8723B(u8  rate);
 u8 HwRateToMRate8723B(u8	 rate);
 

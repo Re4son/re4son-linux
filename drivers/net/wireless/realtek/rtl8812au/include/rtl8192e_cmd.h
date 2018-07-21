@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- * Copyright(c) 2007 - 2011 Realtek Corporation. All rights reserved.
+ * Copyright(c) 2012 - 2017 Realtek Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as
@@ -11,12 +11,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
- *
- *
- ******************************************************************************/
+ *****************************************************************************/
 #ifndef __RTL8192E_CMD_H__
 #define __RTL8192E_CMD_H__
 
@@ -122,11 +117,10 @@ typedef struct _RSVDPAGE_LOC_92E {
 void rtl8192e_set_FwPwrMode_cmd(PADAPTER padapter, u8 Mode);
 void rtl8192e_set_FwJoinBssReport_cmd(PADAPTER padapter, u8 mstatus);
 u8 rtl8192e_set_rssi_cmd(PADAPTER padapter, u8 *param);
-void rtl8192e_set_raid_cmd(PADAPTER padapter, u32 bitmap, u8 *arg, u8 bw);
 s32 FillH2CCmd_8192E(PADAPTER padapter, u8 ElementID, u32 CmdLen, u8 *pCmdBuffer);
 u8 GetTxBufferRsvdPageNum8192E(_adapter *padapter, bool wowlan);
 /* u8 rtl8192c_set_FwSelectSuspend_cmd(PADAPTER padapter, u8 bfwpoll, u16 period); */
-s32 c2h_handler_8192e(PADAPTER padapter, u8 *buf);
+s32 c2h_handler_8192e(_adapter *adapter, u8 id, u8 seq, u8 plen, u8 *payload);
 #ifdef CONFIG_BT_COEXIST
 	void rtl8192e_download_BTCoex_AP_mode_rsvd_page(PADAPTER padapter);
 #endif /* CONFIG_BT_COEXIST */
@@ -134,17 +128,11 @@ s32 c2h_handler_8192e(PADAPTER padapter, u8 *buf);
 	void rtl8192e_set_p2p_ps_offload_cmd(PADAPTER padapter, u8 p2p_ps_state);
 #endif /* CONFIG_P2P */
 
-void CheckFwRsvdPageContent(PADAPTER padapter);
-
 #ifdef CONFIG_TDLS
 	#ifdef CONFIG_TDLS_CH_SW
 		void rtl8192e_set_BcnEarly_C2H_Rpt_cmd(PADAPTER padapter, u8 enable);
 	#endif
 #endif
-
-#ifdef CONFIG_TSF_RESET_OFFLOAD
-	int reset_tsf(PADAPTER Adapter, u8 reset_port);
-#endif /* CONFIG_TSF_RESET_OFFLOAD */
 
 /* / TX Feedback Content */
 #define	USEC_UNIT_FOR_8192E_C2H_TX_RPT_QUEUE_TIME			256
@@ -157,20 +145,5 @@ void CheckFwRsvdPageContent(PADAPTER padapter);
 #define	GET_8192E_C2H_TX_RPT_DATA_RETRY_CNT(_Header)		LE_BITS_TO_1BYTE((_Header + 2), 0, 6)
 #define	GET_8192E_C2H_TX_RPT_QUEUE_TIME(_Header)				LE_BITS_TO_2BYTE((_Header + 3), 0, 16)	/* In unit of 256 microseconds. */
 #define	GET_8192E_C2H_TX_RPT_FINAL_DATA_RATE(_Header)		LE_BITS_TO_1BYTE((_Header + 5), 0, 8)
-
-
-
-void C2HContentParsing8192E(
-	IN	PADAPTER		Adapter,
-	IN	u1Byte			c2hCmdId,
-	IN	u1Byte			c2hCmdLen,
-	IN	pu1Byte			tmpBuf
-);
-VOID
-C2HPacketHandler_8192E(
-	IN	PADAPTER		Adapter,
-	IN	pu1Byte			Buffer,
-	IN	u1Byte			Length
-);
 
 #endif /* __RTL8192E_CMD_H__ */

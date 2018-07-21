@@ -1,0 +1,1 @@
+cmd_drivers/net/wireless/realtek/rtl8812au/8812au.ko := ld -r -m elf_x86_64  -z max-page-size=0x200000 -T ./scripts/module-common.lds  --build-id  -o drivers/net/wireless/realtek/rtl8812au/8812au.ko drivers/net/wireless/realtek/rtl8812au/8812au.o drivers/net/wireless/realtek/rtl8812au/8812au.mod.o ;  true

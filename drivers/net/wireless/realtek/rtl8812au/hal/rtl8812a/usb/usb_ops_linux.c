@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- * Copyright(c) 2007 - 2011 Realtek Corporation. All rights reserved.
+ * Copyright(c) 2007 - 2017 Realtek Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as
@@ -11,12 +11,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
- *
- *
- ******************************************************************************/
+ *****************************************************************************/
 #define _HCI_OPS_OS_C_
 
 /* #include <drv_types.h> */
@@ -98,16 +93,14 @@ void interrupt_handler_8812au(_adapter *padapter, u16 pkt_len, u8 *pbuf)
 		RTW_INFO("===> %s Receive FIFO Overflow\n", __FUNCTION__);
 #endif/* DBG_CONFIG_ERROR_DETECT_INT */
 
-
+#ifdef CONFIG_FW_C2H_REG
 	/* C2H Event */
-	if (pbuf[0] != 0) {
-		_rtw_memcpy(&(pHalData->C2hArray[0]), &(pbuf[USB_INTR_CONTENT_C2H_OFFSET]), 16);
-		/* rtw_c2h_wk_cmd(padapter); to do.. */
-	}
-
-}
+	if (pbuf[0] != 0)
+		usb_c2h_hisr_hdl(padapter, pbuf);
 #endif
-
+}
+#endif /* CONFIG_SUPPORT_USB_INT */
+#if 0
 int recvbuf2recvframe(PADAPTER padapter, void *ptr)
 {
 	u8	*pbuf;
@@ -169,7 +162,7 @@ int recvbuf2recvframe(PADAPTER padapter, void *ptr)
 
 #ifdef CONFIG_RX_PACKET_APPEND_FCS
 		if (check_fwstate(&padapter->mlmepriv, WIFI_MONITOR_STATE) == _FALSE)
-			if ((pattrib->pkt_rpt_type == NORMAL_RX) && (pHalData->ReceiveConfig & RCR_APPFCS))
+			if ((pattrib->pkt_rpt_type == NORMAL_RX) && rtw_hal_rcr_check(padapter, RCR_APPFCS))
 				pattrib->pkt_len -= IEEE80211_FCS_LEN;
 #endif
 		if (rtw_os_alloc_recvframe(padapter, precvframe,
@@ -182,27 +175,19 @@ int recvbuf2recvframe(PADAPTER padapter, void *ptr)
 		recvframe_put(precvframe, pattrib->pkt_len);
 		/* recvframe_pull(precvframe, drvinfo_sz + RXDESC_SIZE); */
 
-		if (pattrib->pkt_rpt_type == NORMAL_RX) { /* Normal rx packet */
-			if (pattrib->physt)
-				pphy_status = (pbuf + RXDESC_OFFSET);
-
-#ifdef CONFIG_CONCURRENT_MODE
-			pre_recv_entry(precvframe, pphy_status);
-#endif /*CONFIG_CONCURRENT_MODE*/
-
-			if (pattrib->physt && pphy_status)
-				rx_query_phy_status(precvframe, pphy_status);
-
-			rtw_recv_entry(precvframe);
-
-		} else { /* pkt_rpt_type == TX_REPORT1-CCX, TX_REPORT2-TX RTP,HIS_REPORT-USB HISR RTP */
+		if (pattrib->pkt_rpt_type == NORMAL_RX) /* Normal rx packet */
+			pre_recv_entry(precvframe, pattrib->physt ? (pbuf + RXDESC_OFFSET) : NULL);
+		else { /* pkt_rpt_type == TX_REPORT1-CCX, TX_REPORT2-TX RTP,HIS_REPORT-USB HISR RTP */
 			if (pattrib->pkt_rpt_type == C2H_PACKET) {
 				/*RTW_INFO("rx C2H_PACKET\n");*/
-				C2HPacketHandler_8812(padapter, precvframe->u.hdr.rx_data, pattrib->pkt_len);
+				rtw_hal_c2h_pkt_pre_hdl(padapter, precvframe->u.hdr.rx_data, pattrib->pkt_len);
 			} else if (pattrib->pkt_rpt_type == HIS_REPORT) {
 				/*RTW_INFO("%s rx USB HISR\n", __func__);*/
 #ifdef CONFIG_SUPPORT_USB_INT
+#if ((RTL8812A_SUPPORT == 1) || (RTL8821A_SUPPORT == 1))
+			if (p_dm->support_ic_type & (ODM_RTL8812A | ODM_RTL8821A))
 				interrupt_handler_8812au(padapter, pattrib->pkt_len, precvframe->u.hdr.rx_data);
+#endif
 #endif
 			}
 			rtw_free_recvframe(precvframe, pfree_recv_queue);
@@ -223,7 +208,7 @@ _exit_recvbuf2recvframe:
 
 	return _SUCCESS;
 }
-
+#endif
 
 void rtl8812au_xmit_tasklet(void *priv)
 {

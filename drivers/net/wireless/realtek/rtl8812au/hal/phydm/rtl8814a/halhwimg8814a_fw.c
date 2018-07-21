@@ -25,7 +25,7 @@
 #if(DM_ODM_SUPPORT_TYPE & (ODM_AP))
 
 
-u1Byte Array_MP_8814A_FW_AP[] = {
+u8 array_mp_8814a_fw_ap[] = {
 0x14, 0x88, 0x00, 0x00, 0x19, 0x00, 0x00, 0x00, 0x42, 0x27, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
 0x0A, 0x1C, 0x13, 0x30, 0xDF, 0x07, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 
 0x00, 0x00, 0x20, 0x80, 0xE8, 0x12, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
@@ -3542,29 +3542,29 @@ u1Byte Array_MP_8814A_FW_AP[] = {
 0x07, 0x97, 0x04, 0x63, 0x00, 0xEF, 0x00, 0x65, 0xEE, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
 
 };
-u4Byte ArrayLength_MP_8814A_FW_AP = 56224;
+u32 array_length_mp_8814a_fw_ap = 56224;
 
 
 void
 ODM_ReadFirmware_MP_8814A_FW_AP(
-     IN   PDM_ODM_T    pDM_Odm,
-     OUT  u1Byte       *pFirmware,
-     OUT  u4Byte       *pFirmwareSize
+     struct PHY_DM_STRUCT    *    pDM_Odm,
+     u8       *pFirmware,
+     u32       *pFirmwareSize
 )
 {
 #if (DM_ODM_SUPPORT_TYPE & (ODM_CE))
-     *((SIZE_PTR*)pFirmware) = (SIZE_PTR)Array_MP_8814A_FW_AP;
+     *((SIZE_PTR*)pFirmware) = (SIZE_PTR)array_mp_8814a_fw_ap;
 #else
-     ODM_MoveMemory(pDM_Odm, pFirmware, Array_MP_8814A_FW_AP, ArrayLength_MP_8814A_FW_AP);
+     ODM_MoveMemory(pDM_Odm, pFirmware, array_mp_8814a_fw_ap, array_length_mp_8814a_fw_ap);
 #endif
-     *pFirmwareSize = ArrayLength_MP_8814A_FW_AP;
+     *pFirmwareSize = array_length_mp_8814a_fw_ap;
 }
 
 
 #else
 
 
-u1Byte Array_MP_8814A_FW_NIC[] = {
+u8 array_mp_8814a_fw_nic[] = {
 0x14, 0x88, 0x00, 0x00, 0x19, 0x00, 0x00, 0x00, 0x42, 0x27, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
 0x0A, 0x1C, 0x13, 0x30, 0xDF, 0x07, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 
 0x00, 0x00, 0x20, 0x80, 0xF8, 0x13, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
@@ -7748,22 +7748,22 @@ u1Byte Array_MP_8814A_FW_NIC[] = {
 0x01, 0x10, 0x00, 0x65, 0x07, 0x97, 0x04, 0x63, 0x00, 0xEF, 0x00, 0x65, 0x01, 0x14, 0x00, 0x00, 
 0xEC, 0x8C, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
 };
-u4Byte ArrayLength_MP_8814A_FW_NIC = 66904;
+u32 array_length_mp_8814a_fw_nic = 66904;
 
 
 void
 ODM_ReadFirmware_MP_8814A_FW_NIC(
-     IN   PDM_ODM_T    pDM_Odm,
-     OUT  u1Byte       *pFirmware,
-     OUT  u4Byte       *pFirmwareSize
+     struct PHY_DM_STRUCT    *    pDM_Odm,
+     u8       *pFirmware,
+     u32       *pFirmwareSize
 )
 {
 #if (DM_ODM_SUPPORT_TYPE & (ODM_CE))
-     *((SIZE_PTR*)pFirmware) = (SIZE_PTR)Array_MP_8814A_FW_NIC;
+     *((SIZE_PTR*)pFirmware) = (SIZE_PTR)array_mp_8814a_fw_nic;
 #else
-     ODM_MoveMemory(pDM_Odm, pFirmware, Array_MP_8814A_FW_NIC, ArrayLength_MP_8814A_FW_NIC);
+     ODM_MoveMemory(pDM_Odm, pFirmware, array_mp_8814a_fw_nic, array_length_mp_8814a_fw_nic);
 #endif
-     *pFirmwareSize = ArrayLength_MP_8814A_FW_NIC;
+     *pFirmwareSize = array_length_mp_8814a_fw_nic;
 }
 
 

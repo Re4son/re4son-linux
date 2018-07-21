@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- * Copyright(c) 2007 - 2011 Realtek Corporation. All rights reserved.
+ * Copyright(c) 2007 - 2017 Realtek Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as
@@ -11,12 +11,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
- *
- *
- ******************************************************************************/
+ *****************************************************************************/
 /* ***** temporarily flag ******* */
 #define CONFIG_SINGLE_IMG
 /* #define CONFIG_DISABLE_ODM */
@@ -27,7 +22,8 @@
  */
 #define AUTOCONF_INCLUDED
 #define RTL871X_MODULE_NAME "8812AU"
-#define DRV_NAME KBUILD_MODNAME
+#define DRV_NAME "rtl8812au"
+
 
 #define CONFIG_USB_HCI
 
@@ -43,7 +39,6 @@
 	/* #define CONFIG_DEBUG_CFG80211 */
 	/* #define CONFIG_DRV_ISSUE_PROV_REQ */ /* IOT FOR S2 */
 	#define CONFIG_SET_SCAN_DENY_TIMER
-	/*#define SUPPLICANT_RTK_VERSION_LOWER_THAN_JB42*/ /* wpa_supplicant realtek version <= jb42 will be defined this */
 #endif
 
 /*
@@ -84,34 +79,40 @@
 
 #define CONFIG_RECV_REORDERING_CTRL	1
 
-/* #define CONFIG_TCP_CSUM_OFFLOAD_RX	1 */
-
-/* #define CONFIG_DRVEXT_MODULE	1 */
-
-#define CONFIG_DFS	1
+#define CONFIG_DFS	0
 
  /* #define CONFIG_SUPPORT_USB_INT */
  #ifdef CONFIG_SUPPORT_USB_INT
 /* #define CONFIG_USB_INTERRUPT_IN_PIPE	1 */
 #endif
 
-/* #ifndef CONFIG_MP_INCLUDED */
+#ifdef CONFIG_POWER_SAVING
 	#define CONFIG_IPS	1
 	#ifdef CONFIG_IPS
 	/* #define CONFIG_IPS_LEVEL_2	1 */ /* enable this to set default IPS mode to IPS_LEVEL_2	 */
 	#define CONFIG_IPS_CHECK_IN_WD /* Do IPS Check in WatchDog.	 */
+	#ifdef CONFIG_PNO_SUPPORT
+		#define CONFIG_FWLPS_IN_IPS /* issue H2C command to let FW do LPS when entering IPS */
+	#endif /* CONFIG_PNO_SUPPORT */
 	#endif
 	/* #define SUPPORT_HW_RFOFF_DETECTED	1 */
 
 	#define CONFIG_LPS	1
-	#if defined(CONFIG_LPS) && defined(CONFIG_SUPPORT_USB_INT)
-	/* #define CONFIG_LPS_LCLK	1 */
+	#if defined(CONFIG_LPS)
+		/* #define CONFIG_LPS_LCLK	1 */
 	#endif
 
 	#ifdef CONFIG_LPS_LCLK
-	#define CONFIG_XMIT_THREAD_MODE
-	#endif
-
+		#ifdef CONFIG_POWER_SAVING
+			#define CONFIG_XMIT_THREAD_MODE
+		#endif /* CONFIG_POWER_SAVING */
+		#ifndef CONFIG_SUPPORT_USB_INT
+			#define LPS_RPWM_WAIT_MS 300
+			#define CONFIG_DETECT_CPWM_BY_POLLING
+		#endif /* !CONFIG_SUPPORT_USB_INT */
+		/* #define DBG_CHECK_FW_PS_STATE */
+	#endif /* CONFIG_LPS_LCLK */
+#endif /*CONFIG_POWER_SAVING*/
 	/*#define CONFIG_ANTENNA_DIVERSITY*/
 
 
@@ -121,7 +122,6 @@
 		#define CONFIG_RUNTIME_PORT_SWITCH
 
 		/* #define DBG_RUNTIME_PORT_SWITCH */
-		#define CONFIG_SCAN_BACKOP
 		/* #ifdef CONFIG_RTL8812A */
 		/*	#define CONFIG_TSF_RESET_OFFLOAD 1 */		/* For 2 PORT TSF SYNC. */
 		/* #endif */
@@ -178,13 +178,13 @@
 
 #define CONFIG_SKB_COPY	1/* for amsdu */
 
-#define CONFIG_LED
-#ifdef CONFIG_LED
-	#define CONFIG_SW_LED
-	#ifdef CONFIG_SW_LED
-		/* #define CONFIG_LED_HANDLED_BY_CMD_THREAD */
+#define CONFIG_RTW_LED
+#ifdef CONFIG_RTW_LED
+	#define CONFIG_RTW_SW_LED
+	#ifdef CONFIG_RTW_SW_LED
+		/* #define CONFIG_RTW_LED_HANDLED_BY_CMD_THREAD */
 	#endif
-#endif /* CONFIG_LED */
+#endif /* CONFIG_RTW_LED */
 
 #define CONFIG_GLOBAL_UI_PID
 
@@ -245,7 +245,7 @@
 
 #ifdef CONFIG_WOWLAN
 	#define CONFIG_GTK_OL
-	#define CONFIG_ARP_KEEP_ALIVE
+	/* #define CONFIG_ARP_KEEP_ALIVE */
 #endif /* CONFIG_WOWLAN */
 
 #ifdef CONFIG_GPIO_WAKEUP
@@ -309,6 +309,7 @@
 #endif /* !CONFIG_BT_COEXIST */
 
 
+
 #ifdef CONFIG_USB_TX_AGGREGATION
 /* #define	CONFIG_TX_EARLY_MODE */
 #endif
@@ -322,7 +323,7 @@
 /*
  * Debug Related Config
  */
-// #define DBG	1
+#define DBG 1
 
 #define CONFIG_PROC_DEBUG
 
@@ -345,12 +346,15 @@
 /* #define DBG_RX_SIGNAL_DISPLAY_PROCESSING */
 /* #define DBG_RX_SIGNAL_DISPLAY_SSID_MONITORED "jeff-ap" */
 
+#define DBG_TX_POWER_IDX 1
+#define DBG_PG_TXPWR_READ 1
+#define DBG_HIGHEST_RATE_BMP_BW_CHANGE 1
 
 /* #define DBG_SHOW_MCUFWDL_BEFORE_51_ENABLE */
 /* #define DBG_ROAMING_TEST */
 
 /* #define DBG_HAL_INIT_PROFILING */
 
-/* #define DBG_MEMORY_LEAK*/
+/*#define DBG_MEMORY_LEAK*/
 #define	DBG_RX_DFRAME_RAW_DATA
-/* #define CONFIG_USE_EXTERNAL_POWER */        /* NOT USB2.0 power, so no 500mA power constraint, no limitation in Power by Rate */
+/*#define CONFIG_USE_EXTERNAL_POWER  */        /* NOT USB2.0 power, so no 500mA power constraint, no limitation in Power by Rate*/

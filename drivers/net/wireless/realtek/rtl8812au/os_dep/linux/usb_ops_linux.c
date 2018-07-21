@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- * Copyright(c) 2007 - 2012 Realtek Corporation. All rights reserved.
+ * Copyright(c) 2007 - 2017 Realtek Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of version 2 of the GNU General Public License as
@@ -11,11 +11,7 @@
  * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
- *
- *******************************************************************************/
+ *****************************************************************************/
 #define _USB_OPS_LINUX_C_
 
 #include <drv_types.h>
@@ -40,6 +36,13 @@ int usbctrl_vendorreq(struct intf_hdl *pintfhdl, u8 request, u16 value, u16 inde
 	u8 reqtype;
 	u8 *pIo_buf;
 	int vendorreq_times = 0;
+
+#if (defined(CONFIG_RTL8822B) || defined(CONFIG_RTL8821C))
+#define REG_ON_SEC 0x00
+#define REG_OFF_SEC 0x01
+#define REG_LOCAL_SEC 0x02
+	u8 current_reg_sec = REG_LOCAL_SEC;
+#endif
 
 #ifdef CONFIG_USB_VENDOR_REQ_BUFFER_DYNAMIC_ALLOCATE
 	u8 *tmp_buf;
@@ -144,6 +147,38 @@ int usbctrl_vendorreq(struct intf_hdl *pintfhdl, u8 request, u16 value, u16 inde
 			break;
 
 	}
+
+#if (defined(CONFIG_RTL8822B) || defined(CONFIG_RTL8821C))
+	if (value < 0xFE00) {
+		if (0x00 <= value && value <= 0xff)
+			current_reg_sec = REG_ON_SEC;
+		else if (0x1000 <= value && value <= 0x10ff)
+			current_reg_sec = REG_ON_SEC;
+		else
+			current_reg_sec = REG_OFF_SEC;
+	} else {
+		current_reg_sec = REG_LOCAL_SEC;
+	}
+
+	if (current_reg_sec == REG_ON_SEC) {
+		unsigned int t_pipe = usb_sndctrlpipe(udev, 0);/* write_out */
+		u8 t_reqtype =  REALTEK_USB_VENQT_WRITE;
+		u8 t_len = 1;
+		u8 t_req = 0x05;
+		u16 t_reg = 0;
+		u16 t_index = 0;
+
+		t_reg = 0x4e0;
+
+		status = rtw_usb_control_msg(udev, t_pipe, t_req, t_reqtype, t_reg, t_index, pIo_buf, t_len, RTW_USB_CONTROL_MSG_TIMEOUT);
+
+		if (status == t_len)
+			rtw_reset_continual_io_error(pdvobjpriv);
+		else
+			RTW_INFO("reg 0x%x, usb %s %u fail, status:%d\n", t_reg, "write" , t_len, status);
+
+	}
+#endif
 
 	/* release IO memory used by vendorreq */
 #ifdef CONFIG_USB_VENDOR_REQ_BUFFER_DYNAMIC_ALLOCATE
@@ -724,7 +759,7 @@ void usb_read_port_complete(struct urb *purb, struct pt_regs *regs)
 			 , __func__
 			 , rtw_is_drv_stopped(padapter) ? "True" : "False"
 			, rtw_is_surprise_removed(padapter) ? "True" : "False");
-		goto exit;
+		return;
 	}
 
 	if (purb->status == 0) {
@@ -777,8 +812,6 @@ void usb_read_port_complete(struct urb *purb, struct pt_regs *regs)
 			break;
 		}
 	}
-
-exit:
 
 }
 
@@ -1103,3 +1136,119 @@ u32 usb_read_interrupt(struct intf_hdl *pintfhdl, u32 addr)
 	return ret;
 }
 #endif /* CONFIG_USB_INTERRUPT_IN_PIPE */
+
+
+int recvbuf2recvframe(PADAPTER padapter, void *ptr)
+{
+	u8	*pbuf;
+	u8	pkt_cnt = 0;
+	u32	pkt_offset;
+	s32	transfer_len;
+	u8				*pphy_status = NULL;
+	union recv_frame	*precvframe = NULL;
+	struct rx_pkt_attrib	*pattrib = NULL;
+	HAL_DATA_TYPE	*pHalData = GET_HAL_DATA(padapter);
+	struct PHY_DM_STRUCT *p_dm = adapter_to_phydm(padapter);
+	struct recv_priv	*precvpriv = &padapter->recvpriv;
+	_queue			*pfree_recv_queue = &precvpriv->free_recv_queue;
+	_pkt *pskb;
+
+#ifdef CONFIG_USE_USB_BUFFER_ALLOC_RX
+	pskb = NULL;
+	transfer_len = (s32)((struct recv_buf *)ptr)->transfer_len;
+	pbuf = ((struct recv_buf *)ptr)->pbuf;
+#else
+	pskb = (_pkt *)ptr;
+	transfer_len = (s32)pskb->len;
+	pbuf = pskb->data;
+#endif/* CONFIG_USE_USB_BUFFER_ALLOC_RX */
+
+
+#ifdef CONFIG_USB_RX_AGGREGATION
+	pkt_cnt = GET_RX_STATUS_DESC_USB_AGG_PKTNUM_8812(pbuf);
+#endif
+
+	do {
+		precvframe = rtw_alloc_recvframe(pfree_recv_queue);
+		if (precvframe == NULL) {
+			RTW_INFO("%s()-%d: rtw_alloc_recvframe() failed! RX Drop!\n", __FUNCTION__, __LINE__);
+			goto _exit_recvbuf2recvframe;
+		}
+
+		_rtw_init_listhead(&precvframe->u.hdr.list);
+		precvframe->u.hdr.precvbuf = NULL;	/* can't access the precvbuf for new arch. */
+		precvframe->u.hdr.len = 0;
+#if (RTL8814A_SUPPORT == 1)
+		if (p_dm->support_ic_type & (ODM_RTL8814A))
+			rtl8814_query_rx_desc_status(precvframe, pbuf);
+#endif
+#if ((RTL8812A_SUPPORT == 1) || (RTL8821A_SUPPORT == 1))
+		if (p_dm->support_ic_type & (ODM_RTL8812 | ODM_RTL8821))
+			rtl8812_query_rx_desc_status(precvframe, pbuf);
+#endif
+
+		pattrib = &precvframe->u.hdr.attrib;
+
+		if ((padapter->registrypriv.mp_mode == 0) && ((pattrib->crc_err) || (pattrib->icv_err))) {
+			RTW_INFO("%s: RX Warning! crc_err=%d icv_err=%d, skip!\n", __FUNCTION__, pattrib->crc_err, pattrib->icv_err);
+
+			rtw_free_recvframe(precvframe, pfree_recv_queue);
+			goto _exit_recvbuf2recvframe;
+		}
+
+		pkt_offset = RXDESC_SIZE + pattrib->drvinfo_sz + pattrib->shift_sz + pattrib->pkt_len;
+
+		if ((pattrib->pkt_len <= 0) || (pkt_offset > transfer_len)) {
+			RTW_INFO("%s()-%d: RX Warning!,pkt_len<=0 or pkt_offset> transfer_len\n", __FUNCTION__, __LINE__);
+			rtw_free_recvframe(precvframe, pfree_recv_queue);
+			goto _exit_recvbuf2recvframe;
+		}
+
+#ifdef CONFIG_RX_PACKET_APPEND_FCS
+		if (check_fwstate(&padapter->mlmepriv, WIFI_MONITOR_STATE) == _FALSE)
+			if ((pattrib->pkt_rpt_type == NORMAL_RX) && rtw_hal_rcr_check(padapter, RCR_APPFCS))
+				pattrib->pkt_len -= IEEE80211_FCS_LEN;
+#endif
+		if (rtw_os_alloc_recvframe(padapter, precvframe,
+			(pbuf + pattrib->shift_sz + pattrib->drvinfo_sz + RXDESC_SIZE), pskb) == _FAIL) {
+			rtw_free_recvframe(precvframe, pfree_recv_queue);
+
+			goto _exit_recvbuf2recvframe;
+		}
+
+		recvframe_put(precvframe, pattrib->pkt_len);
+		/* recvframe_pull(precvframe, drvinfo_sz + RXDESC_SIZE); */
+
+		if (pattrib->pkt_rpt_type == NORMAL_RX) /* Normal rx packet */
+			pre_recv_entry(precvframe, pattrib->physt ? (pbuf + RXDESC_OFFSET) : NULL);
+		else { /* pkt_rpt_type == TX_REPORT1-CCX, TX_REPORT2-TX RTP,HIS_REPORT-USB HISR RTP */
+			if (pattrib->pkt_rpt_type == C2H_PACKET) {
+				/*RTW_INFO("rx C2H_PACKET\n");*/
+				rtw_hal_c2h_pkt_pre_hdl(padapter, precvframe->u.hdr.rx_data, pattrib->pkt_len);
+			} else if (pattrib->pkt_rpt_type == HIS_REPORT) {
+				/*RTW_INFO("%s rx USB HISR\n", __func__);*/
+#ifdef CONFIG_SUPPORT_USB_INT
+#if ((RTL8812A_SUPPORT == 1) || (RTL8821A_SUPPORT == 1))
+			if (p_dm->support_ic_type & (ODM_RTL8812 | ODM_RTL8821))
+				interrupt_handler_8812au(padapter, pattrib->pkt_len, precvframe->u.hdr.rx_data);
+#endif
+#endif
+			}
+			rtw_free_recvframe(precvframe, pfree_recv_queue);
+		}
+
+#ifdef CONFIG_USB_RX_AGGREGATION
+		/* jaguar 8-byte alignment */
+		pkt_offset = (u16)_RND8(pkt_offset);
+		pkt_cnt--;
+		pbuf += pkt_offset;
+#endif
+		transfer_len -= pkt_offset;
+		precvframe = NULL;
+
+	} while (transfer_len > 0);
+
+_exit_recvbuf2recvframe:
+
+	return _SUCCESS;
+}

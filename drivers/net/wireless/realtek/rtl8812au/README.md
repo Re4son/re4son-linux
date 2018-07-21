@@ -1,75 +1,107 @@
-# RTL8812AU/21AU and RTL8814AU drivers
-# with monitor mode and frame injection
+# rtl8812au
 
-## DKMS
-This driver can be installed using [DKMS]. This is a system which will automatically recompile and install a kernel module when a new kernel gets installed or updated. To make use of DKMS, install the `dkms` package, which on Debian (based) systems is done like this:
-```
-sudo apt install dkms
-```
+## Realtek 8812AU driver v5.2.20.2 with monitor mode and frame injection
 
-## Installation of Driver
-In order to install the driver open a terminal in the directory with the source code and execute the following command:
-```
-sudo ./dkms-install.sh
-```
+This driver supports 8812au & 8821au chipsets, not the 8814au chipset at this moment.
 
-## Removal of Driver
-In order to remove the driver from your system open a terminal in the directory with the source code and execute the following command:
+### Building / Installing
+
+To build and install module manually:
 ```
-sudo ./dkms-remove.sh
+$ sudo make
+$ sudo make install
 ```
 
-## Make
-For building & installing the RTL8812AU driver with 'make' use
+To use DKMS install:
+
 ```
-make
-make install
-```
-and for building & installing the RTL8814AU driver with 'make' use
-```
-make RTL8814=1
-make install RTL8814=1
+$ sudo ./dkms-install.sh
 ```
 
-## Notes
+To use DKMS uninstall and remove:
+
+```
+$ sudo ./dkms-remove.sh
+```
+
+### Notes
 Download
 ```
-git clone -b v5.1.5 https://github.com/aircrack-ng/rtl8812au.git
+git clone -b v5.2.20 https://github.com/aircrack-ng/rtl8812au.git
 cd rtl*
 ```
 Package / Build dependencies (Kali)
 ```
 sudo apt-get install build-essential
 sudo apt-get install bc
+sudo apt-get install libelf-dev
+sudo apt-get install dkms
 sudo apt-get install linux-headers-`uname -r`
 ```
-For Raspberry (RPI)
+Building for  Raspberry (RPI) also needs
 ```
 sudo apt install raspberrypi-kernel-headers
 ```
-For setting monitor mode
-  1. Fix problematic interference in monitor mode. 
-  ```
-  airmon-ng check kill
-  ```
-  You may also uncheck the box "Automatically connect to this network when it is avaiable" in nm-connection-editor. This only works if you have a saved wifi connection.
-  
-  2. Set interface down
-  ```
-  sudo ip link set wlan0 down
-  ``` 
-  3. Set monitor mode
-  ```
-  sudo iw dev wlan0 set type monitor
-  ```
-  4. Set interface up
-  ```
-  sudo ip link set wlan0 up
-  ```
-For setting TX power
+
+### For setting monitor mode
+1. Fix problematic interference in monitor mode. 
 ```
-sudo iw wlan0 set txpower fixed 3000
+airmon-ng check kill
 ```
+You may also uncheck the box "Automatically connect to this network when it is avaiable" in nm-connection-editor. This only works if you have a saved wifi connection.
+
+2. Set interface down
+```
+sudo ip link set wlan0 down
+``` 
+3. Set monitor mode
+```
+sudo iw dev wlan0 set type monitor
+```
+4. Set interface up
+```
+sudo ip link set wlan0 up
+```
+
+### TX Power Control
+
+The txpower may be adjusted with these commands
+```
+ifconfig <adapter> down
+iwconfig <adapter> txpower 30
+```
+
+### LED control
+
+#### You can now control LED behaviour statically by Makefile, for example:
+
+```sh
+CONFIG_LED_ENABLE = n
+```
+value can be y or n
+
+#### statically by module parameter in /etc/modprobe.d/8812au.conf or wherever, for example:
+
+```sh
+options 8812au rtw_led_enable=0
+```
+value can be 0 or 1
+
+#### or dynamically by writing to /proc/net/rtl8812au/$(your interface name)/led_enable, for example:
+
+```sh
+$ echo "0" > /proc/net/rtl8812au/$(your interface name)/led_enable
+```
+value can be 0 or 1
+
+#### check current value:
+
+```sh
+$ cat /proc/net/rtl8812au/$(your interface name)/led_enable
+```
+
+### NetworkManager
+
 Newer versions of NetworkManager switches to random MAC address. Some users would prefer to use a fixed address. 
 Simply add these lines below
 ```
@@ -79,32 +111,3 @@ wifi.scan-rand-mac-address=no
 at the end of file /etc/NetworkManager/NetworkManager.conf and restart NetworkManager with the command:
 ```
 sudo service NetworkManager restart
-```
-
-## Tested / Working
-```
-Tested and working on
-  * Kali Linux
-  * Raspberry PI
-```
-
-## LED Parameter
-```
-We've added the "realtek-leds.conf" in build directory, 
-with this you may change the leds to 
-"2: Allways On", "1: Normal" or "0: Allways Off" with placing the file in "/etc/modprobe.d/
-
-Manual modprobe will override this file if option value also included at the command line, e.g.,
-$ sudo modprobe -r 8812au
-$ sudo modprobe 8812au rtw_led_ctrl=1
-```
-
-## Credits
-```
-astsam    - for the main work + monitor/injection support            - https://github.com/astsam
-evilphish - for great patching (USB3, VHT + txpower control +++)     - https://github.com/evilphish
-jcard0na  - for fixing the "sluggish" / broken injection	     - https://github.com/jcard0na
-dpShaker  - for adding support for pre-configured SeqNum (RadioTap)
-CGarces   - for providing kernel support patch (v4.15)
-brimstone - for providing kernel support patch (v4.14)
-```
