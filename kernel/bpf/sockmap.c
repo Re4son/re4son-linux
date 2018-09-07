@@ -58,6 +58,7 @@ struct bpf_stab {
 	struct bpf_map map;
 	struct sock **sock_map;
 	struct bpf_sock_progs progs;
+	raw_spinlock_t lock;
 };
 
 struct bucket {
@@ -89,9 +90,9 @@ enum smap_psock_state {
 
 struct smap_psock_map_entry {
 	struct list_head list;
+	struct bpf_map *map;
 	struct sock **entry;
 	struct htab_elem __rcu *hash_link;
-	struct bpf_htab __rcu *htab;
 };
 
 struct smap_psock {
@@ -235,7 +236,7 @@ static int bpf_tcp_init(struct sock *sk)
 }
 
 static void smap_release_sock(struct smap_psock *psock, struct sock *sock);
-static int free_start_sg(struct sock *sk, struct sk_msg_buff *md);
+static int free_start_sg(struct sock *sk, struct sk_msg_buff *md, bool charge);
 
 static void bpf_tcp_release(struct sock *sk)
 {
@@ -247,7 +248,7 @@ static void bpf_tcp_release(struct sock *sk)
 		goto out;
 
 	if (psock->cork) {
-		free_start_sg(psock->sock, psock->cork);
+		free_start_sg(psock->sock, psock->cork, true);
 		kfree(psock->cork);
 		psock->cork = NULL;
 	}
@@ -329,27 +330,32 @@ static void bpf_tcp_close(struct sock *sk, long timeout)
 	close_fun = psock->save_close;
 
 	if (psock->cork) {
-		free_start_sg(psock->sock, psock->cork);
+		free_start_sg(psock->sock, psock->cork, true);
 		kfree(psock->cork);
 		psock->cork = NULL;
 	}
 
 	list_for_each_entry_safe(md, mtmp, &psock->ingress, list) {
 		list_del(&md->list);
-		free_start_sg(psock->sock, md);
+		free_start_sg(psock->sock, md, true);
 		kfree(md);
 	}
 
 	e = psock_map_pop(sk, psock);
 	while (e) {
 		if (e->entry) {
-			osk = cmpxchg(e->entry, sk, NULL);
+			struct bpf_stab *stab = container_of(e->map, struct bpf_stab, map);
+
+			raw_spin_lock_bh(&stab->lock);
+			osk = *e->entry;
 			if (osk == sk) {
+				*e->entry = NULL;
 				smap_release_sock(psock, sk);
 			}
+			raw_spin_unlock_bh(&stab->lock);
 		} else {
 			struct htab_elem *link = rcu_dereference(e->hash_link);
-			struct bpf_htab *htab = rcu_dereference(e->htab);
+			struct bpf_htab *htab = container_of(e->map, struct bpf_htab, map);
 			struct hlist_head *head;
 			struct htab_elem *l;
 			struct bucket *b;
@@ -363,13 +369,14 @@ static void bpf_tcp_close(struct sock *sk, long timeout)
 			/* If another thread deleted this object skip deletion.
 			 * The refcnt on psock may or may not be zero.
 			 */
-			if (l) {
+			if (l && l == link) {
 				hlist_del_rcu(&link->hash_node);
 				smap_release_sock(psock, link->sk);
 				free_htab_elem(htab, link);
 			}
 			raw_spin_unlock_bh(&b->lock);
 		}
+		kfree(e);
 		e = psock_map_pop(sk, psock);
 	}
 	rcu_read_unlock();
@@ -563,14 +570,16 @@ static void free_bytes_sg(struct sock *sk, int bytes,
 	md->sg_start = i;
 }
 
-static int free_sg(struct sock *sk, int start, struct sk_msg_buff *md)
+static int free_sg(struct sock *sk, int start,
+		   struct sk_msg_buff *md, bool charge)
 {
 	struct scatterlist *sg = md->sg_data;
 	int i = start, free = 0;
 
 	while (sg[i].length) {
 		free += sg[i].length;
-		sk_mem_uncharge(sk, sg[i].length);
+		if (charge)
+			sk_mem_uncharge(sk, sg[i].length);
 		if (!md->skb)
 			put_page(sg_page(&sg[i]));
 		sg[i].length = 0;
@@ -587,9 +596,9 @@ static int free_sg(struct sock *sk, int start, struct sk_msg_buff *md)
 	return free;
 }
 
-static int free_start_sg(struct sock *sk, struct sk_msg_buff *md)
+static int free_start_sg(struct sock *sk, struct sk_msg_buff *md, bool charge)
 {
-	int free = free_sg(sk, md->sg_start, md);
+	int free = free_sg(sk, md->sg_start, md, charge);
 
 	md->sg_start = md->sg_end;
 	return free;
@@ -597,7 +606,7 @@ static int free_start_sg(struct sock *sk, struct sk_msg_buff *md)
 
 static int free_curr_sg(struct sock *sk, struct sk_msg_buff *md)
 {
-	return free_sg(sk, md->sg_curr, md);
+	return free_sg(sk, md->sg_curr, md, true);
 }
 
 static int bpf_map_msg_verdict(int _rc, struct sk_msg_buff *md)
@@ -711,7 +720,7 @@ static int bpf_tcp_ingress(struct sock *sk, int apply_bytes,
 		list_add_tail(&r->list, &psock->ingress);
 		sk->sk_data_ready(sk);
 	} else {
-		free_start_sg(sk, r);
+		free_start_sg(sk, r, true);
 		kfree(r);
 	}
 
@@ -725,10 +734,7 @@ static int bpf_tcp_sendmsg_do_redirect(struct sock *sk, int send,
 {
 	bool ingress = !!(md->flags & BPF_F_INGRESS);
 	struct smap_psock *psock;
-	struct scatterlist *sg;
 	int err = 0;
-
-	sg = md->sg_data;
 
 	rcu_read_lock();
 	psock = smap_psock_sk(sk);
@@ -748,14 +754,10 @@ static int bpf_tcp_sendmsg_do_redirect(struct sock *sk, int send,
 		release_sock(sk);
 	}
 	smap_release_sock(psock, sk);
-	if (unlikely(err))
-		goto out;
-	return 0;
+	return err;
 out_rcu:
 	rcu_read_unlock();
-out:
-	free_bytes_sg(NULL, send, md, false);
-	return err;
+	return 0;
 }
 
 static inline void bpf_md_init(struct smap_psock *psock)
@@ -818,7 +820,7 @@ more_data:
 	case __SK_PASS:
 		err = bpf_tcp_push(sk, send, m, flags, true);
 		if (unlikely(err)) {
-			*copied -= free_start_sg(sk, m);
+			*copied -= free_start_sg(sk, m, true);
 			break;
 		}
 
@@ -841,16 +843,17 @@ more_data:
 		lock_sock(sk);
 
 		if (unlikely(err < 0)) {
-			free_start_sg(sk, m);
+			int free = free_start_sg(sk, m, false);
+
 			psock->sg_size = 0;
 			if (!cork)
-				*copied -= send;
+				*copied -= free;
 		} else {
 			psock->sg_size -= send;
 		}
 
 		if (cork) {
-			free_start_sg(sk, m);
+			free_start_sg(sk, m, true);
 			psock->sg_size = 0;
 			kfree(m);
 			m = NULL;
@@ -908,6 +911,8 @@ static int bpf_tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len,
 
 	if (unlikely(flags & MSG_ERRQUEUE))
 		return inet_recv_error(sk, msg, len, addr_len);
+	if (!skb_queue_empty(&sk->sk_receive_queue))
+		return tcp_recvmsg(sk, msg, len, nonblock, flags, addr_len);
 
 	rcu_read_lock();
 	psock = smap_psock_sk(sk);
@@ -917,9 +922,6 @@ static int bpf_tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len,
 	if (unlikely(!refcount_inc_not_zero(&psock->refcnt)))
 		goto out;
 	rcu_read_unlock();
-
-	if (!skb_queue_empty(&sk->sk_receive_queue))
-		return tcp_recvmsg(sk, msg, len, nonblock, flags, addr_len);
 
 	lock_sock(sk);
 bytes_ready:
@@ -1048,12 +1050,12 @@ static int bpf_tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size)
 	timeo = sock_sndtimeo(sk, msg->msg_flags & MSG_DONTWAIT);
 
 	while (msg_data_left(msg)) {
-		struct sk_msg_buff *m;
+		struct sk_msg_buff *m = NULL;
 		bool enospc = false;
 		int copy;
 
 		if (sk->sk_err) {
-			err = sk->sk_err;
+			err = -sk->sk_err;
 			goto out_err;
 		}
 
@@ -1116,8 +1118,11 @@ wait_for_sndbuf:
 		set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
 wait_for_memory:
 		err = sk_stream_wait_memory(sk, &timeo);
-		if (err)
+		if (err) {
+			if (m && m != psock->cork)
+				free_start_sg(sk, m, true);
 			goto out_err;
+		}
 	}
 out_err:
 	if (err < 0)
@@ -1420,12 +1425,15 @@ out:
 static void smap_write_space(struct sock *sk)
 {
 	struct smap_psock *psock;
+	void (*write_space)(struct sock *sk);
 
 	rcu_read_lock();
 	psock = smap_psock_sk(sk);
 	if (likely(psock && test_bit(SMAP_TX_RUNNING, &psock->state)))
 		schedule_work(&psock->tx_work);
+	write_space = psock->save_write_space;
 	rcu_read_unlock();
+	write_space(sk);
 }
 
 static void smap_stop_sock(struct smap_psock *psock, struct sock *sk)
@@ -1454,10 +1462,16 @@ static void smap_destroy_psock(struct rcu_head *rcu)
 	schedule_work(&psock->gc_work);
 }
 
+static bool psock_is_smap_sk(struct sock *sk)
+{
+	return inet_csk(sk)->icsk_ulp_ops == &bpf_tcp_ulp_ops;
+}
+
 static void smap_release_sock(struct smap_psock *psock, struct sock *sock)
 {
 	if (refcount_dec_and_test(&psock->refcnt)) {
-		tcp_cleanup_ulp(sock);
+		if (psock_is_smap_sk(sock))
+			tcp_cleanup_ulp(sock);
 		write_lock_bh(&sock->sk_callback_lock);
 		smap_stop_sock(psock, sock);
 		write_unlock_bh(&sock->sk_callback_lock);
@@ -1571,13 +1585,13 @@ static void smap_gc_work(struct work_struct *w)
 		bpf_prog_put(psock->bpf_tx_msg);
 
 	if (psock->cork) {
-		free_start_sg(psock->sock, psock->cork);
+		free_start_sg(psock->sock, psock->cork, true);
 		kfree(psock->cork);
 	}
 
 	list_for_each_entry_safe(md, mtmp, &psock->ingress, list) {
 		list_del(&md->list);
-		free_start_sg(psock->sock, md);
+		free_start_sg(psock->sock, md, true);
 		kfree(md);
 	}
 
@@ -1641,6 +1655,7 @@ static struct bpf_map *sock_map_alloc(union bpf_attr *attr)
 		return ERR_PTR(-ENOMEM);
 
 	bpf_map_init_from_attr(&stab->map, attr);
+	raw_spin_lock_init(&stab->lock);
 
 	/* make sure page count doesn't overflow */
 	cost = (u64) stab->map.max_entries * sizeof(struct sock *);
@@ -1675,8 +1690,10 @@ static void smap_list_map_remove(struct smap_psock *psock,
 
 	spin_lock_bh(&psock->maps_lock);
 	list_for_each_entry_safe(e, tmp, &psock->maps, list) {
-		if (e->entry == entry)
+		if (e->entry == entry) {
 			list_del(&e->list);
+			kfree(e);
+		}
 	}
 	spin_unlock_bh(&psock->maps_lock);
 }
@@ -1690,8 +1707,10 @@ static void smap_list_hash_remove(struct smap_psock *psock,
 	list_for_each_entry_safe(e, tmp, &psock->maps, list) {
 		struct htab_elem *c = rcu_dereference(e->hash_link);
 
-		if (c == hash_link)
+		if (c == hash_link) {
 			list_del(&e->list);
+			kfree(e);
+		}
 	}
 	spin_unlock_bh(&psock->maps_lock);
 }
@@ -1711,14 +1730,15 @@ static void sock_map_free(struct bpf_map *map)
 	 * and a grace period expire to ensure psock is really safe to remove.
 	 */
 	rcu_read_lock();
+	raw_spin_lock_bh(&stab->lock);
 	for (i = 0; i < stab->map.max_entries; i++) {
 		struct smap_psock *psock;
 		struct sock *sock;
 
-		sock = xchg(&stab->sock_map[i], NULL);
+		sock = stab->sock_map[i];
 		if (!sock)
 			continue;
-
+		stab->sock_map[i] = NULL;
 		psock = smap_psock_sk(sock);
 		/* This check handles a racing sock event that can get the
 		 * sk_callback_lock before this case but after xchg happens
@@ -1730,6 +1750,7 @@ static void sock_map_free(struct bpf_map *map)
 			smap_release_sock(psock, sock);
 		}
 	}
+	raw_spin_unlock_bh(&stab->lock);
 	rcu_read_unlock();
 
 	sock_map_remove_complete(stab);
@@ -1773,19 +1794,23 @@ static int sock_map_delete_elem(struct bpf_map *map, void *key)
 	if (k >= map->max_entries)
 		return -EINVAL;
 
-	sock = xchg(&stab->sock_map[k], NULL);
+	raw_spin_lock_bh(&stab->lock);
+	sock = stab->sock_map[k];
+	stab->sock_map[k] = NULL;
+	raw_spin_unlock_bh(&stab->lock);
 	if (!sock)
 		return -EINVAL;
 
 	psock = smap_psock_sk(sock);
 	if (!psock)
-		goto out;
-
-	if (psock->bpf_parse)
+		return 0;
+	if (psock->bpf_parse) {
+		write_lock_bh(&sock->sk_callback_lock);
 		smap_stop_sock(psock, sock);
+		write_unlock_bh(&sock->sk_callback_lock);
+	}
 	smap_list_map_remove(psock, &stab->sock_map[k]);
 	smap_release_sock(psock, sock);
-out:
 	return 0;
 }
 
@@ -1821,11 +1846,9 @@ out:
 static int __sock_map_ctx_update_elem(struct bpf_map *map,
 				      struct bpf_sock_progs *progs,
 				      struct sock *sock,
-				      struct sock **map_link,
 				      void *key)
 {
 	struct bpf_prog *verdict, *parse, *tx_msg;
-	struct smap_psock_map_entry *e = NULL;
 	struct smap_psock *psock;
 	bool new = false;
 	int err = 0;
@@ -1875,6 +1898,10 @@ static int __sock_map_ctx_update_elem(struct bpf_map *map,
 	 * doesn't update user data.
 	 */
 	if (psock) {
+		if (!psock_is_smap_sk(sock)) {
+			err = -EBUSY;
+			goto out_progs;
+		}
 		if (READ_ONCE(psock->bpf_parse) && parse) {
 			err = -EBUSY;
 			goto out_progs;
@@ -1898,14 +1925,6 @@ static int __sock_map_ctx_update_elem(struct bpf_map *map,
 		new = true;
 	}
 
-	if (map_link) {
-		e = kzalloc(sizeof(*e), GFP_ATOMIC | __GFP_NOWARN);
-		if (!e) {
-			err = -ENOMEM;
-			goto out_free;
-		}
-	}
-
 	/* 3. At this point we have a reference to a valid psock that is
 	 * running. Attach any BPF programs needed.
 	 */
@@ -1927,17 +1946,6 @@ static int __sock_map_ctx_update_elem(struct bpf_map *map,
 		write_unlock_bh(&sock->sk_callback_lock);
 	}
 
-	/* 4. Place psock in sockmap for use and stop any programs on
-	 * the old sock assuming its not the same sock we are replacing
-	 * it with. Because we can only have a single set of programs if
-	 * old_sock has a strp we can stop it.
-	 */
-	if (map_link) {
-		e->entry = map_link;
-		spin_lock_bh(&psock->maps_lock);
-		list_add_tail(&e->list, &psock->maps);
-		spin_unlock_bh(&psock->maps_lock);
-	}
 	return err;
 out_free:
 	smap_release_sock(psock, sock);
@@ -1948,7 +1956,6 @@ out_progs:
 	}
 	if (tx_msg)
 		bpf_prog_put(tx_msg);
-	kfree(e);
 	return err;
 }
 
@@ -1958,36 +1965,57 @@ static int sock_map_ctx_update_elem(struct bpf_sock_ops_kern *skops,
 {
 	struct bpf_stab *stab = container_of(map, struct bpf_stab, map);
 	struct bpf_sock_progs *progs = &stab->progs;
-	struct sock *osock, *sock;
+	struct sock *osock, *sock = skops->sk;
+	struct smap_psock_map_entry *e;
+	struct smap_psock *psock;
 	u32 i = *(u32 *)key;
 	int err;
 
 	if (unlikely(flags > BPF_EXIST))
 		return -EINVAL;
-
 	if (unlikely(i >= stab->map.max_entries))
 		return -E2BIG;
 
-	sock = READ_ONCE(stab->sock_map[i]);
-	if (flags == BPF_EXIST && !sock)
-		return -ENOENT;
-	else if (flags == BPF_NOEXIST && sock)
-		return -EEXIST;
+	e = kzalloc(sizeof(*e), GFP_ATOMIC | __GFP_NOWARN);
+	if (!e)
+		return -ENOMEM;
 
-	sock = skops->sk;
-	err = __sock_map_ctx_update_elem(map, progs, sock, &stab->sock_map[i],
-					 key);
+	err = __sock_map_ctx_update_elem(map, progs, sock, key);
 	if (err)
 		goto out;
 
-	osock = xchg(&stab->sock_map[i], sock);
-	if (osock) {
-		struct smap_psock *opsock = smap_psock_sk(osock);
-
-		smap_list_map_remove(opsock, &stab->sock_map[i]);
-		smap_release_sock(opsock, osock);
+	/* psock guaranteed to be present. */
+	psock = smap_psock_sk(sock);
+	raw_spin_lock_bh(&stab->lock);
+	osock = stab->sock_map[i];
+	if (osock && flags == BPF_NOEXIST) {
+		err = -EEXIST;
+		goto out_unlock;
 	}
+	if (!osock && flags == BPF_EXIST) {
+		err = -ENOENT;
+		goto out_unlock;
+	}
+
+	e->entry = &stab->sock_map[i];
+	e->map = map;
+	spin_lock_bh(&psock->maps_lock);
+	list_add_tail(&e->list, &psock->maps);
+	spin_unlock_bh(&psock->maps_lock);
+
+	stab->sock_map[i] = sock;
+	if (osock) {
+		psock = smap_psock_sk(osock);
+		smap_list_map_remove(psock, &stab->sock_map[i]);
+		smap_release_sock(psock, osock);
+	}
+	raw_spin_unlock_bh(&stab->lock);
+	return 0;
+out_unlock:
+	smap_release_sock(psock, sock);
+	raw_spin_unlock_bh(&stab->lock);
 out:
+	kfree(e);
 	return err;
 }
 
@@ -2123,7 +2151,9 @@ static struct bpf_map *sock_hash_alloc(union bpf_attr *attr)
 		return ERR_PTR(-EPERM);
 
 	/* check sanity of attributes */
-	if (attr->max_entries == 0 || attr->value_size != 4 ||
+	if (attr->max_entries == 0 ||
+	    attr->key_size == 0 ||
+	    attr->value_size != 4 ||
 	    attr->map_flags & ~SOCK_CREATE_FLAG_MASK)
 		return ERR_PTR(-EINVAL);
 
@@ -2250,8 +2280,10 @@ static struct htab_elem *alloc_sock_hash_elem(struct bpf_htab *htab,
 	}
 	l_new = kmalloc_node(htab->elem_size, GFP_ATOMIC | __GFP_NOWARN,
 			     htab->map.numa_node);
-	if (!l_new)
+	if (!l_new) {
+		atomic_dec(&htab->count);
 		return ERR_PTR(-ENOMEM);
+	}
 
 	memcpy(l_new->key, key, key_size);
 	l_new->sk = sk;
@@ -2350,7 +2382,7 @@ static int sock_hash_ctx_update_elem(struct bpf_sock_ops_kern *skops,
 	b = __select_bucket(htab, hash);
 	head = &b->head;
 
-	err = __sock_map_ctx_update_elem(map, progs, sock, NULL, key);
+	err = __sock_map_ctx_update_elem(map, progs, sock, key);
 	if (err)
 		goto err;
 
@@ -2376,8 +2408,7 @@ static int sock_hash_ctx_update_elem(struct bpf_sock_ops_kern *skops,
 	}
 
 	rcu_assign_pointer(e->hash_link, l_new);
-	rcu_assign_pointer(e->htab,
-			   container_of(map, struct bpf_htab, map));
+	e->map = map;
 	spin_lock_bh(&psock->maps_lock);
 	list_add_tail(&e->list, &psock->maps);
 	spin_unlock_bh(&psock->maps_lock);
@@ -2498,6 +2529,7 @@ const struct bpf_map_ops sock_map_ops = {
 	.map_update_elem = sock_map_update_elem,
 	.map_delete_elem = sock_map_delete_elem,
 	.map_release_uref = sock_map_release,
+	.map_check_btf = map_check_no_btf,
 };
 
 const struct bpf_map_ops sock_hash_ops = {
@@ -2508,6 +2540,7 @@ const struct bpf_map_ops sock_hash_ops = {
 	.map_update_elem = sock_hash_update_elem,
 	.map_delete_elem = sock_hash_delete_elem,
 	.map_release_uref = sock_map_release,
+	.map_check_btf = map_check_no_btf,
 };
 
 BPF_CALL_4(bpf_sock_map_update, struct bpf_sock_ops_kern *, bpf_sock,

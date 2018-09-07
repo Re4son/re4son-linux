@@ -381,7 +381,7 @@ static void nft_rbtree_gc(struct work_struct *work)
 
 		gcb = nft_set_gc_batch_check(set, gcb, GFP_ATOMIC);
 		if (!gcb)
-			goto out;
+			break;
 
 		atomic_dec(&set->nelems);
 		nft_set_gc_batch_add(gcb, rbe);
@@ -390,10 +390,12 @@ static void nft_rbtree_gc(struct work_struct *work)
 			rbe = rb_entry(prev, struct nft_rbtree_elem, node);
 			atomic_dec(&set->nelems);
 			nft_set_gc_batch_add(gcb, rbe);
+			prev = NULL;
 		}
 		node = rb_next(node);
+		if (!node)
+			break;
 	}
-out:
 	if (gcb) {
 		for (i = 0; i < gcb->head.cnt; i++) {
 			rbe = gcb->elems[i];
@@ -409,8 +411,8 @@ out:
 			   nft_set_gc_interval(set));
 }
 
-static unsigned int nft_rbtree_privsize(const struct nlattr * const nla[],
-					const struct nft_set_desc *desc)
+static u64 nft_rbtree_privsize(const struct nlattr * const nla[],
+			       const struct nft_set_desc *desc)
 {
 	return sizeof(struct nft_rbtree);
 }
@@ -440,6 +442,7 @@ static void nft_rbtree_destroy(const struct nft_set *set)
 	struct rb_node *node;
 
 	cancel_delayed_work_sync(&priv->gc_work);
+	rcu_barrier();
 	while ((node = priv->root.rb_node) != NULL) {
 		rb_erase(node, &priv->root);
 		rbe = rb_entry(node, struct nft_rbtree_elem, node);
