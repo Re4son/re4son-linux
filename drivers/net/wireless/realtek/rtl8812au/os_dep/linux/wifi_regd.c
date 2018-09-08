@@ -260,6 +260,7 @@ static void _rtw_reg_apply_active_scan_flags(struct wiphy *wiphy,
  */
 static void _rtw_reg_apply_radar_flags(struct wiphy *wiphy)
 {
+#ifndef CONFIG_DISABLE_REGD_C
 	struct ieee80211_supported_band *sband;
 	struct ieee80211_channel *ch;
 	unsigned int i;
@@ -306,6 +307,7 @@ static void _rtw_reg_apply_radar_flags(struct wiphy *wiphy)
 				     IEEE80211_CHAN_PASSIVE_SCAN;
 #endif
 	}
+#endif // CONFIG_DISABLE_REGD_C
 }
 
 static void _rtw_reg_apply_flags(struct wiphy *wiphy)
@@ -334,8 +336,13 @@ static void _rtw_reg_apply_flags(struct wiphy *wiphy)
 				if (ch)
 					ch->flags &= ~(IEEE80211_CHAN_DISABLED|IEEE80211_CHAN_NO_HT40PLUS|
 						IEEE80211_CHAN_NO_HT40MINUS|IEEE80211_CHAN_NO_80MHZ|
-						IEEE80211_CHAN_NO_160MHZ);
-					//ch->flags = IEEE80211_CHAN_DISABLED;
+						IEEE80211_CHAN_NO_160MHZ|
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 14, 0))
+						IEEE80211_CHAN_NO_IBSS|IEEE80211_CHAN_PASSIVE_SCAN);
+#else
+						IEEE80211_CHAN_NO_IR);
+#endif
+						//ch->flags = IEEE80211_CHAN_DISABLED;
 			}
 		}
 	}

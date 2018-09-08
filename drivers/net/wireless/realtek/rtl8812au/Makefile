@@ -23,7 +23,7 @@ EXTRA_CFLAGS += -Wno-type-limits
 
 GCC_VER_49 := $(shell echo `$(CC) -dumpversion | cut -f1-2 -d.` \>= 4.9 | bc )
 ifeq ($(GCC_VER_49),1)
-EXTRA_CFLAGS += -Wno-date-time	# Fix compile error && warning on gcc 4.9 and later
+EXTRA_CFLAGS += -Wno-date-time -Wno-error=date-time # Fix compile error && warning on gcc 4.9 and later
 endif
 
 EXTRA_CFLAGS += -I$(src)/include
@@ -39,7 +39,7 @@ CONFIG_RTL8812A = y
 CONFIG_RTL8821A = y
 CONFIG_RTL8192E = n
 CONFIG_RTL8723B = n
-CONFIG_RTL8814A = n
+CONFIG_RTL8814A = y
 CONFIG_RTL8723C = n
 CONFIG_RTL8188F = n
 CONFIG_RTL8822B = n
@@ -110,7 +110,7 @@ CONFIG_AP_WOWLAN = n
 ######### Notify SDIO Host Keep Power During Syspend ##########
 CONFIG_RTW_SDIO_PM_KEEP_POWER = y
 ###################### MP HW TX MODE FOR VHT #######################
-CONFIG_MP_VHT_HW_TX_MODE = n
+CONFIG_MP_VHT_HW_TX_MODE = y
 ###################### Platform Related #######################
 CONFIG_PLATFORM_I386_PC = y
 CONFIG_PLATFORM_ARM_RPI = n
@@ -180,6 +180,10 @@ ifeq ($(CONFIG_DISABLE_REGD_C), y)
 EXTRA_CFLAGS += -DCONFIG_DISABLE_REGD_C
 endif
 
+ifeq ($(CONFIG_MP_VHT_HW_TX_MODE), y)
+EXTRA_CFLAGS += -DCONFIG_MP_VHT_HW_TX_MODE
+endif
+
 ifeq ($(CONFIG_GSPI_HCI), y)
 HCI_NAME = gspi
 endif
@@ -196,17 +200,34 @@ ifeq ($(CONFIG_PCI_HCI), y)
 HCI_NAME = pci
 endif
 
-#ifeq ($(RTL8814), 1)
-#CONFIG_RTL8812A = n
-#CONFIG_RTL8821A = n
-#CONFIG_RTL8814A = y
-#endif
+ifeq ($(DEBUG), 1)
+EXTRA_CFLAGS += -DDBG=1 -DCONFIG_RTW_DEBUG -DCONFIG_DBG_COUNTER -DRTW_LOG_LEVEL=5
+EXTRA_CFLAGS += -DCONFIG_RADIOTAP_WITH_RXDESC
+else ifeq ($(DEBUG), 2)
+EXTRA_CFLAGS += -DDBG=1 -DCONFIG_RTW_DEBUG -DCONFIG_DBG_COUNTER -DRTW_LOG_LEVEL=5
+EXTRA_CFLAGS += -DCONFIG_DEBUG_RTL871X
+EXTRA_CFLAGS += -DCONFIG_RADIOTAP_WITH_RXDESC
+else
+EXTRA_CFLAGS += -DDBG=0
+endif
 
-#ifeq ($(RTL8821), 1)
-#CONFIG_RTL8812A = y
-#CONFIG_RTL8821A = y
-#CONFIG_RTL8814A = n
-#endif
+ifeq ($(CONFIG_RTL8812A)_$(CONFIG_RTL8821A)_$(CONFIG_RTL8814A), y_y_y)
+
+EXTRA_CFLAGS += -DDRV_NAME=\"rtl88xxau\"
+ifeq ($(CONFIG_USB_HCI), y)
+USER_MODULE_NAME = 88XXau
+endif
+ifeq ($(CONFIG_PCI_HCI), y)
+USER_MODULE_NAME = 88XXae
+endif
+ifeq ($(CONFIG_SDIO_HCI), y)
+USER_MODULE_NAME = 88XXas
+endif
+
+else
+EXTRA_CFLAGS += -DDRV_NAME=\"rtl8812au\"
+endif
+
 
 ifeq ($(CONFIG_USB2_EXTERNAL_POWER), y)
 EXTRA_CFLAGS += -DCONFIG_USE_EXTERNAL_POWER
@@ -548,10 +569,7 @@ endif
 
 ########### HAL_RTL8814A #################################
 ifeq ($(CONFIG_RTL8814A), y)
-## ADD NEW VHT MP HW TX MODE ##
-#EXTRA_CFLAGS += -DCONFIG_MP_VHT_HW_TX_MODE
-#CONFIG_MP_VHT_HW_TX_MODE = y
-##########################################
+
 RTL871X = rtl8814a
 ifeq ($(CONFIG_USB_HCI), y)
 MODULE_NAME = 8814au
@@ -1009,6 +1027,9 @@ endif
 
 ifeq ($(CONFIG_LED_CONTROL), y)
 EXTRA_CFLAGS += -DCONFIG_LED_CONTROL
+ifeq ($(RTL8814), 1)
+EXTRA_CFLAGS += -DCONFIG_SW_LED -DCONFIG_RTW_SW_LED
+endif
 ifeq ($(CONFIG_LED_ENABLE), y)
 EXTRA_CFLAGS += -DCONFIG_LED_ENABLE
 endif
@@ -1019,9 +1040,12 @@ EXTRA_CFLAGS += -DCONFIG_MP_VHT_HW_TX_MODE
 ifeq ($(CONFIG_PLATFORM_I386_PC), y)
 ## For I386 X86 ToolChain use Hardware FLOATING
 EXTRA_CFLAGS += -mhard-float
+EXTRA_CFLAGS += -DMARK_KERNEL_PFU
 else
 ## For ARM ToolChain use Hardware FLOATING
-EXTRA_CFLAGS += -mfloat-abi=hard
+# Raspbian kernel is with soft-float.
+# 'softfp' allows FP instructions, but no FP on function call interfaces
+EXTRA_CFLAGS += -mfloat-abi=softfp
 endif
 endif
 
@@ -1043,7 +1067,7 @@ SUBARCH := $(shell uname -m | sed -e s/i.86/i386/ | sed -e s/aarch64/arm64/ )
 ARCH ?= $(SUBARCH)
 CROSS_COMPILE ?=
 KVER := $(shell uname -r)
-KSRC := /lib/modules/$(KVER)/build
+KSRC ?= /lib/modules/$(KVER)/build
 MODDESTDIR := /lib/modules/$(KVER)/kernel/drivers/net/wireless/
 INSTALL_PREFIX :=
 STAGINGMODDIR := /lib/modules/$(KVER)/kernel/drivers/staging

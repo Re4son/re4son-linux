@@ -14,6 +14,11 @@
  *****************************************************************************/
 #if defined(CONFIG_MP_INCLUDED)
 
+#ifdef MARK_KERNEL_PFU
+	#include <linux/kernel.h>
+	#include <asm/fpu/api.h>
+#endif
+
 #include <drv_types.h>
 #include <rtw_mp.h>
 #include <rtw_mp_ioctl.h>
@@ -826,7 +831,7 @@ int rtw_mp_disable_bt_coexist(struct net_device *dev,
 	u32 bt_coexist;
 
 	_rtw_memset(input, 0, sizeof(input));
-	
+
 	if (copy_from_user(input, wrqu->data.pointer, wrqu->data.length))
 		return -EFAULT;
 
@@ -1617,14 +1622,20 @@ int rtw_mp_tx(struct net_device *dev,
 
 			PMAC_Get_Pkt_Param(&pMptCtx->PMacTxInfo, &pMptCtx->PMacPktInfo);
 
+			#ifdef MARK_KERNEL_PFU
+				kernel_fpu_begin();
+			#endif
 			if (MPT_IS_CCK_RATE(pMptCtx->PMacTxInfo.TX_RATE))
-
-				CCK_generator(&pMptCtx->PMacTxInfo, &pMptCtx->PMacPktInfo);
+				CCK_generator(&pMptCtx->PMacTxInfo, &pMptCtx->PMacPktInfo);	// Floating-Point!
 			else {
-				PMAC_Nsym_generator(&pMptCtx->PMacTxInfo, &pMptCtx->PMacPktInfo);
+				PMAC_Nsym_generator(&pMptCtx->PMacTxInfo, &pMptCtx->PMacPktInfo);	// Floating-Point!
 				/* 24 BIT*/
-				L_SIG_generator(pMptCtx->PMacPktInfo.N_sym, &pMptCtx->PMacTxInfo, &pMptCtx->PMacPktInfo);
+				L_SIG_generator(pMptCtx->PMacPktInfo.N_sym, &pMptCtx->PMacTxInfo, &pMptCtx->PMacPktInfo);	// Floating-Point!
 			}
+			#ifdef MARK_KERNEL_PFU
+				kernel_fpu_end();
+			#endif
+
 			/*	48BIT*/
 			if (MPT_IS_HT_RATE(pMptCtx->PMacTxInfo.TX_RATE))
 				HT_SIG_generator(&pMptCtx->PMacTxInfo, &pMptCtx->PMacPktInfo);
@@ -1640,7 +1651,6 @@ int rtw_mp_tx(struct net_device *dev,
 			}
 
 			mpt_ProSetPMacTx(padapter);
-
 		} else if (strncmp(extra, "pmact,mode=", 11) == 0) {
 			int txmode = 0;
 
@@ -2227,7 +2237,7 @@ int rtw_mp_SetBT(struct net_device *dev,
 		return -EFAULT;
 
 	*(extra + wrqu->data.length) = '\0';
-	
+
 	if (strlen(extra) < 1)
 		return -EFAULT;
 

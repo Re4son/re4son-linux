@@ -306,7 +306,7 @@ int rtw_drv_ant_band_switch = 1; /* 0:OFF , 1:ON, Driver control antenna band sw
 int rtw_single_ant_path; /*0:main ant , 1:aux ant , Fixed single antenna path, default main ant*/
 
 /* 0: doesn't switch, 1: switch from usb2.0 to usb 3.0 2: switch from usb3.0 to usb 2.0 */
-int rtw_switch_usb_mode = 0;
+int rtw_switch_usb_mode = 1;
 
 #ifdef CONFIG_USB_AUTOSUSPEND
 int rtw_enusbss = 1;/* 0:disable,1:enable */
@@ -1288,11 +1288,13 @@ unsigned int rtw_classify8021d(struct sk_buff *skb)
 
 
 static u16 rtw_select_queue(struct net_device *dev, struct sk_buff *skb
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0)
+	, struct net_device *sb_dev
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(3, 13, 0)
 	, void *accel_priv
-	#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
+#endif
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
 	, select_queue_fallback_t fallback
-	#endif
 #endif
 )
 {
@@ -1352,6 +1354,7 @@ static u8 is_rtw_ndev(struct net_device *ndev)
 static int rtw_ndev_notifier_call(struct notifier_block *nb, unsigned long state, void *ptr)
 {
 	struct net_device *ndev;
+	_adapter *adapter;
 
 	if (ptr == NULL)
 		return NOTIFY_DONE;
@@ -1364,6 +1367,8 @@ static int rtw_ndev_notifier_call(struct notifier_block *nb, unsigned long state
 
 	if (ndev == NULL)
 		return NOTIFY_DONE;
+	
+	adapter = rtw_netdev_priv(ndev);
 
 	if (!is_rtw_ndev(ndev))
 		return NOTIFY_DONE;
@@ -1373,6 +1378,8 @@ static int rtw_ndev_notifier_call(struct notifier_block *nb, unsigned long state
 	switch (state) {
 	case NETDEV_CHANGENAME:
 		rtw_adapter_proc_replace(ndev);
+		strncpy(adapter->old_ifname, ndev->name, IFNAMSIZ);
+		adapter->old_ifname[IFNAMSIZ-1] = 0;
 		break;
 	}
 
